@@ -1,0 +1,155 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "1inch Cross-Chain SDK",
+  "projectDescription": "TypeScript SDK for creating atomic cross-chain swaps through 1inch Fusion+",
+  "theme": "sequoia",
+  "primaryColor": "#1b314f",
+  "lightColor": "#2e5c8a",
+  "darkColor": "#0f1a2e",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/atomic-swaps",
+              "concepts/hash-locks",
+              "concepts/secrets",
+              "concepts/presets"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/evm-to-evm",
+              "guides/solana-to-evm",
+              "guides/evm-to-solana",
+              "guides/native-assets",
+              "guides/integrator-fees",
+              "guides/order-tracking"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/websocket",
+              "advanced/custom-presets",
+              "advanced/event-decoding",
+              "advanced/order-cancellation"
+            ]
+          },
+          {
+            "group": "Migration",
+            "pages": [
+              "migration/v2-guide"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "SDK Class",
+            "pages": [
+              "api/sdk",
+              "api/sdk-config"
+            ]
+          },
+          {
+            "group": "Orders",
+            "pages": [
+              "api/orders/create-order",
+              "api/orders/submit-order",
+              "api/orders/order-status",
+              "api/orders/order-types"
+            ]
+          },
+          {
+            "group": "Quotes",
+            "pages": [
+              "api/quotes/get-quote",
+              "api/quotes/quote-params",
+              "api/quotes/quote-response"
+            ]
+          },
+          {
+            "group": "Secrets",
+            "pages": [
+              "api/secrets/hash-lock",
+              "api/secrets/submit-secret",
+              "api/secrets/ready-to-accept"
+            ]
+          },
+          {
+            "group": "WebSocket",
+            "pages": [
+              "api/websocket/websocket-api",
+              "api/websocket/order-events",
+              "api/websocket/rpc-methods"
+            ]
+          },
+          {
+            "group": "Addresses",
+            "pages": [
+              "api/addresses/evm-address",
+              "api/addresses/solana-address"
+            ]
+          },
+          {
+            "group": "Networks",
+            "pages": [
+              "api/networks/supported-chains",
+              "api/networks/network-enum"
+            ]
+          },
+          {
+            "group": "Connectors",
+            "pages": [
+              "api/connectors/private-key",
+              "api/connectors/blockchain-provider"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Cross-chain atomic swaps between EVM chains and Solana",
+    "Hash-lock based escrow system for secure transfers",
+    "Support for native and ERC-20 tokens",
+    "Real-time order tracking via WebSocket",
+    "Integrator fee collection",
+    "Multiple execution presets (slow, fast, medium)",
+    "Order cancellation and refunds",
+    "TypeScript with full type safety"
+  ],
+  "publicApiSurface": [
+    "SDK",
+    "WebSocketApi",
+    "EvmCrossChainOrder",
+    "SvmCrossChainOrder",
+    "HashLock",
+    "EvmAddress",
+    "SolanaAddress",
+    "NetworkEnum",
+    "PresetEnum",
+    "OrderStatus",
+    "PrivateKeyProviderConnector",
+    "Quote",
+    "NativeOrdersFactory",
+    "Bps",
+    "IntegratorFee",
+    "ResolverFee"
+  ]
+}
