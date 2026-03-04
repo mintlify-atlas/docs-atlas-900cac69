@@ -1,0 +1,207 @@
+---
+title: QuoteParams
+description: Parameters for requesting cross-chain swap quotes
+---
+
+## Interface
+
+```typescript
+interface QuoteParams {
+  srcChainId: NetworkEnum
+  dstChainId: NetworkEnum
+  srcTokenAddress: string
+  dstTokenAddress: string
+  amount: string
+  walletAddress?: string
+  enableEstimate?: boolean
+  integratorFee?: IntegratorFeeRequest
+  permit?: string
+  isPermit2?: boolean
+  source?: string
+}
+```
+
+## Fields
+
+<ParamField path="srcChainId" type="NetworkEnum" required>
+  Source chain ID
+  
+  Supported values:
+  - `NetworkEnum.ETHEREUM` (1)
+  - `NetworkEnum.POLYGON` (137)
+  - `NetworkEnum.BINANCE` (56)
+  - `NetworkEnum.ARBITRUM` (42161)
+  - `NetworkEnum.OPTIMISM` (10)
+  - `NetworkEnum.AVALANCHE` (43114)
+  - `NetworkEnum.GNOSIS` (100)
+  - `NetworkEnum.COINBASE` (8453)
+  - `NetworkEnum.ZKSYNC` (324)
+  - `NetworkEnum.LINEA` (59144)
+  - `NetworkEnum.SONIC` (146)
+  - `NetworkEnum.UNICHAIN` (130)
+  - `NetworkEnum.SOLANA` (501)
+</ParamField>
+
+<ParamField path="dstChainId" type="NetworkEnum" required>
+  Destination chain ID (same values as `srcChainId`)
+</ParamField>
+
+<ParamField path="srcTokenAddress" type="string" required>
+  Token address on the source chain
+  
+  - For EVM chains: Use `0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee` for native tokens (ETH, BNB, AVAX, etc.)
+  - For Solana: Use actual mint address or `SolanaAddress.NATIVE` constant
+  - Must be a valid ERC-20 address or native token identifier
+</ParamField>
+
+<ParamField path="dstTokenAddress" type="string" required>
+  Token address on the destination chain (same format as `srcTokenAddress`)
+</ParamField>
+
+<ParamField path="amount" type="string" required>
+  Amount to swap in the token's smallest unit (wei, lamports, etc.)
+  
+  Examples:
+  - `"1000000"` = 1 USDT (6 decimals)
+  - `"1000000000000000000"` = 1 ETH (18 decimals)
+  - `"1000000000"` = 1 SOL (9 decimals)
+</ParamField>
+
+<ParamField path="walletAddress" type="string">
+  User's wallet address
+  
+  - Optional for price quotes
+  - **Required** when `enableEstimate: true` (for order creation)
+  - Must be valid address format for the source chain
+</ParamField>
+
+<ParamField path="enableEstimate" type="boolean" default="false">
+  Enable order creation mode
+  
+  When `true`:
+  - Generates a `quoteId` for order submission
+  - Requires `walletAddress` to be provided
+  - Performs additional validation and routing
+  - Quote is valid for order creation
+  
+  When `false`:
+  - Returns pricing information only
+  - No `quoteId` generated
+  - Cannot be used to create orders
+</ParamField>
+
+<ParamField path="integratorFee" type="IntegratorFeeRequest">
+  Integrator fee configuration
+  
+  <Expandable title="IntegratorFeeRequest structure">
+    <ParamField path="receiver" type="EvmAddress" required>
+      Address to receive the integrator fee
+    </ParamField>
+    
+    <ParamField path="value" type="Bps" required>
+      Fee in basis points (100 = 1%, 50 = 0.5%)
+    </ParamField>
+  </Expandable>
+  
+  <Note>Integrator fees are only supported for EVM → EVM swaps</Note>
+</ParamField>
+
+<ParamField path="permit" type="string">
+  EIP-2612 permit signature for gasless token approvals
+  
+  Allows users to approve token spending without a separate transaction. The permit is a signed message containing approval parameters.
+</ParamField>
+
+<ParamField path="isPermit2" type="boolean" default="false">
+  Use Uniswap's Permit2 for token approvals
+  
+  When `true`, uses the Permit2 contract for more flexible token approvals and better UX.
+</ParamField>
+
+<ParamField path="source" type="string">
+  Integration source identifier for analytics
+  
+  Use a unique identifier for your application (e.g., `"my-dapp"`, `"mobile-wallet"`). This helps track usage and can be used for support.
+</ParamField>
+
+## Examples
+
+### Basic Quote Request
+
+```typescript
+import { NetworkEnum } from '@1inch/cross-chain-sdk'
+
+const params: QuoteParams = {
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.POLYGON,
+  srcTokenAddress: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+  dstTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  amount: '1000000',
+  enableEstimate: false
+}
+
+const quote = await sdk.getQuote(params)
+```
+
+### Quote for Order Creation
+
+```typescript
+const params: QuoteParams = {
+  srcChainId: NetworkEnum.POLYGON,
+  dstChainId: NetworkEnum.BINANCE,
+  srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+  amount: '10000000',
+  walletAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+  enableEstimate: true, // Required for order creation
+  source: 'my-dapp'
+}
+
+const quote = await sdk.getQuote(params)
+console.log(quote.quoteId) // Available with enableEstimate: true
+```
+
+### Quote with Integrator Fee
+
+```typescript
+import { Bps, EvmAddress } from '@1inch/cross-chain-sdk'
+
+const params: QuoteParams = {
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.ARBITRUM,
+  srcTokenAddress: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  dstTokenAddress: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+  amount: '1000000',
+  walletAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+  enableEstimate: true,
+  integratorFee: {
+    receiver: EvmAddress.fromString('0xYourFeeReceiverAddress'),
+    value: new Bps(100n) // 1% fee
+  },
+  source: 'my-dapp'
+}
+
+const quote = await sdk.getQuote(params)
+```
+
+## Validation Rules
+
+<Warning>
+  **Required combinations:**
+  - If `enableEstimate: true`, then `walletAddress` must be provided
+  - `srcChainId` and `dstChainId` must be different (no same-chain swaps)
+  - `amount` must be greater than 0
+</Warning>
+
+<Info>
+  **Token addresses:**
+  - Native tokens use `0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee` on EVM
+  - Solana addresses must be valid base58-encoded public keys
+  - ERC-20 addresses must be valid checksummed addresses
+</Info>
+
+## Related Types
+
+- [NetworkEnum](/api/networks/network-enum) - Supported chain IDs
+- [Quote Response](/api/quotes/quote-response) - Quote response structure
+- [IntegratorFee](/guides/integrator-fees) - Fee configuration guide

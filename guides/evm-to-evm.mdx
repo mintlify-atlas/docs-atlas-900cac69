@@ -1,0 +1,312 @@
+---
+title: 'EVM to EVM Cross-Chain Swaps'
+description: 'Learn how to create cross-chain swaps between EVM-compatible chains using the 1inch Cross-Chain SDK'
+---
+
+This guide demonstrates how to perform a complete cross-chain swap between two EVM-compatible chains. We'll walk through swapping USDT on Polygon to BNB on Binance Smart Chain.
+
+## Overview
+
+EVM to EVM swaps are the most common type of cross-chain swap. The process involves:
+
+1. Setting up the SDK with your credentials
+2. Getting a quote for the swap
+3. Generating secrets for the atomic swap
+4. Creating and submitting the order
+5. Monitoring and submitting secrets as escrows are deployed
+6. Tracking the order until completion
+
+## Complete Example
+
+<Steps>
+  <Step title="Install and Import Dependencies">
+    First, install the SDK and import the required modules:
+
+    ```bash
+    npm install @1inch/cross-chain-sdk web3
+    ```
+
+    ```typescript
+    import {
+        HashLock,
+        NetworkEnum,
+        OrderStatus,
+        PresetEnum,
+        PrivateKeyProviderConnector,
+        SDK
+    } from '@1inch/cross-chain-sdk'
+    import Web3 from 'web3'
+    import { randomBytes } from 'node:crypto'
+    ```
+  </Step>
+
+  <Step title="Initialize the SDK">
+    Set up the SDK with your authentication key and blockchain provider:
+
+    ```typescript
+    const privateKey = '0x...' // Your wallet private key
+    const rpc = 'https://ethereum-rpc.publicnode.com'
+    const authKey = 'auth-key' // Get from https://portal.1inch.dev
+    const source = 'sdk-tutorial'
+
+    const web3 = new Web3(rpc)
+    const walletAddress = web3.eth.accounts.privateKeyToAccount(privateKey).address
+
+    const sdk = new SDK({
+        url: 'https://api.1inch.com/fusion-plus',
+        authKey,
+        blockchainProvider: new PrivateKeyProviderConnector(privateKey, web3)
+    })
+    ```
+
+    <Note>
+      The `blockchainProvider` is only required for order creation. If you only need to query quotes or order status, you can omit it.
+    </Note>
+  </Step>
+
+  <Step title="Get a Quote">
+    Request a quote for your desired swap. This example swaps 10 USDT from Polygon to BNB on Binance:
+
+    ```typescript
+    // 10 USDT (Polygon) -> BNB (BSC)
+    const quote = await sdk.getQuote({
+        amount: '10000000', // 10 USDT (6 decimals)
+        srcChainId: NetworkEnum.POLYGON,
+        dstChainId: NetworkEnum.BINANCE,
+        enableEstimate: true,
+        srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', // USDT on Polygon
+        dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', // BNB (native)
+        walletAddress
+    })
+    ```
+
+    <Note>
+      Use `0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee` as the token address for native assets like ETH, BNB, MATIC, etc.
+    </Note>
+  </Step>
+
+  <Step title="Generate Secrets">
+    Generate cryptographic secrets for the atomic swap. The number of secrets depends on the preset:
+
+    ```typescript
+    const preset = PresetEnum.fast
+
+    // Generate secrets based on the preset's required count
+    const secrets = Array.from({
+        length: quote.presets[preset].secretsCount
+    }).map(() => '0x' + randomBytes(32).toString('hex'))
+
+    // Create hash lock for single or multiple fills
+    const hashLock =
+        secrets.length === 1
+            ? HashLock.forSingleFill(secrets[0])
+            : HashLock.forMultipleFills(HashLock.getMerkleLeaves(secrets))
+
+    // Generate secret hashes for order creation
+    const secretHashes = secrets.map((s) => HashLock.hashSecret(s))
+    ```
+
+    <Warning>
+      Keep your secrets secure! These are required to complete the swap. If you lose them, you won't be able to claim your funds from the destination chain.
+    </Warning>
+  </Step>
+
+  <Step title="Create the Order">
+    Create the cross-chain order with your parameters:
+
+    ```typescript
+    const { hash, quoteId, order } = await sdk.createOrder(quote, {
+        walletAddress,
+        hashLock,
+        preset,
+        source,
+        secretHashes
+    })
+    console.log({ hash }, 'order created')
+    ```
+  </Step>
+
+  <Step title="Submit the Order">
+    Submit the order to the 1inch network:
+
+    ```typescript
+    const _orderInfo = await sdk.submitOrder(
+        quote.srcChainId,
+        order,
+        quoteId,
+        secretHashes
+    )
+    console.log({ hash }, 'order submitted')
+    ```
+
+    <Note>
+      Before submitting the order, ensure your wallet has sufficient allowance for the source token to the Limit Order Protocol contract on the source chain.
+    </Note>
+  </Step>
+
+  <Step title="Monitor and Submit Secrets">
+    Continuously monitor the order and submit secrets as escrows are deployed:
+
+    ```typescript
+    // Helper function for delays
+    async function sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms))
+    }
+
+    // Monitor and submit secrets
+    while (true) {
+        const secretsToShare = await sdk.getReadyToAcceptSecretFills(hash)
+
+        if (secretsToShare.fills.length) {
+            for (const { idx } of secretsToShare.fills) {
+                // It is your responsibility to verify escrow addresses before sharing secrets
+                await sdk.submitSecret(hash, secrets[idx])
+                console.log({ idx }, 'shared secret')
+            }
+        }
+
+        // Check if order finished
+        const { status } = await sdk.getOrderStatus(hash)
+
+        if (
+            status === OrderStatus.Executed ||
+            status === OrderStatus.Expired ||
+            status === OrderStatus.Refunded
+        ) {
+            break
+        }
+
+        await sleep(1000)
+    }
+
+    const statusResponse = await sdk.getOrderStatus(hash)
+    console.log(statusResponse)
+    ```
+
+    <Warning>
+      Always verify escrow addresses and contract parameters before submitting secrets. The SDK returns the escrow details in the `getReadyToAcceptSecretFills` response.
+    </Warning>
+  </Step>
+</Steps>
+
+## Full Working Example
+
+<CodeGroup>
+```typescript Complete EVM to EVM Swap
+import {
+    HashLock,
+    NetworkEnum,
+    OrderStatus,
+    PresetEnum,
+    PrivateKeyProviderConnector,
+    SDK
+} from '@1inch/cross-chain-sdk'
+import Web3 from 'web3'
+import { randomBytes } from 'node:crypto'
+
+const privateKey = '0x...'
+const rpc = 'https://ethereum-rpc.publicnode.com'
+const authKey = 'auth-key'
+const source = 'sdk-tutorial'
+
+const web3 = new Web3(rpc)
+const walletAddress = web3.eth.accounts.privateKeyToAccount(privateKey).address
+
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey,
+    blockchainProvider: new PrivateKeyProviderConnector(privateKey, web3)
+})
+
+async function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function main(): Promise<void> {
+    // 10 USDT (Polygon) -> BNB (BSC)
+    const quote = await sdk.getQuote({
+        amount: '10000000',
+        srcChainId: NetworkEnum.POLYGON,
+        dstChainId: NetworkEnum.BINANCE,
+        enableEstimate: true,
+        srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+        dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        walletAddress
+    })
+
+    const preset = PresetEnum.fast
+
+    const secrets = Array.from({
+        length: quote.presets[preset].secretsCount
+    }).map(() => '0x' + randomBytes(32).toString('hex'))
+
+    const hashLock =
+        secrets.length === 1
+            ? HashLock.forSingleFill(secrets[0])
+            : HashLock.forMultipleFills(HashLock.getMerkleLeaves(secrets))
+
+    const secretHashes = secrets.map((s) => HashLock.hashSecret(s))
+
+    const { hash, quoteId, order } = await sdk.createOrder(quote, {
+        walletAddress,
+        hashLock,
+        preset,
+        source,
+        secretHashes
+    })
+    console.log({ hash }, 'order created')
+
+    const _orderInfo = await sdk.submitOrder(
+        quote.srcChainId,
+        order,
+        quoteId,
+        secretHashes
+    )
+    console.log({ hash }, 'order submitted')
+
+    while (true) {
+        const secretsToShare = await sdk.getReadyToAcceptSecretFills(hash)
+
+        if (secretsToShare.fills.length) {
+            for (const { idx } of secretsToShare.fills) {
+                await sdk.submitSecret(hash, secrets[idx])
+                console.log({ idx }, 'shared secret')
+            }
+        }
+
+        const { status } = await sdk.getOrderStatus(hash)
+
+        if (
+            status === OrderStatus.Executed ||
+            status === OrderStatus.Expired ||
+            status === OrderStatus.Refunded
+        ) {
+            break
+        }
+
+        await sleep(1000)
+    }
+
+    const statusResponse = await sdk.getOrderStatus(hash)
+    console.log(statusResponse)
+}
+
+main()
+```
+</CodeGroup>
+
+## Order Presets
+
+The SDK offers different presets that balance speed, cost, and reliability:
+
+- **fast**: Optimized for speed with higher fees
+- **medium**: Balanced speed and cost (recommended)
+- **slow**: Lower fees but takes longer
+
+You can also use `quote.recommendedPreset` to let the SDK choose the best preset for your swap.
+
+## Next Steps
+
+- Learn about [native asset swaps](/guides/native-assets) for handling native tokens like ETH, BNB, AVAX
+- Explore [integrator fees](/guides/integrator-fees) to monetize your integration
+- Understand [order tracking](/guides/order-tracking) for advanced monitoring

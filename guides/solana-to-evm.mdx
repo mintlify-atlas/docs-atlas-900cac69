@@ -1,0 +1,407 @@
+---
+title: 'Solana to EVM Cross-Chain Swaps'
+description: 'Learn how to create cross-chain swaps from Solana to EVM-compatible chains'
+---
+
+This guide demonstrates how to perform a complete cross-chain swap from Solana to an EVM-compatible chain. The example shows swapping USDT on Solana to USDT on Ethereum.
+
+## Overview
+
+Solana to EVM swaps differ from EVM to EVM swaps in several key ways:
+
+- Orders must be announced to the relayer **before** being published on-chain
+- Uses Solana-specific address formats and transaction structures
+- Requires Solana keypair for signing instead of EVM private key
+- Uses `SvmSrcEscrowFactory` for creating on-chain orders
+
+<Warning>
+  Solana orders must be announced to the relayer first, then published on-chain. If you only publish on-chain without announcing, resolvers won't pick up your order.
+</Warning>
+
+## Complete Example
+
+<Steps>
+  <Step title="Install and Import Dependencies">
+    Install the required packages:
+
+    ```bash
+    npm install @1inch/cross-chain-sdk @coral-xyz/anchor
+    ```
+
+    ```typescript
+    import {
+        NetworkEnum,
+        SDK,
+        SolanaAddress,
+        HashLock,
+        EvmAddress,
+        SvmSrcEscrowFactory,
+        OrderStatus
+    } from '@1inch/cross-chain-sdk'
+    import { utils, web3 } from '@coral-xyz/anchor'
+    import { randomBytes } from 'node:crypto'
+    import { setTimeout } from 'node:timers/promises'
+    ```
+  </Step>
+
+  <Step title="Initialize SDK and Solana Signer">
+    Set up the SDK and create a Solana keypair:
+
+    ```typescript
+    const authKey = process.env.DEV_PORTAL_API_TOKEN
+    const signerPrivateKey = process.env.SOLANA_PRIVATE_KEY
+    
+    // Create Solana keypair from base58 private key
+    const makerSigner = web3.Keypair.fromSecretKey(
+        utils.bytes.bs58.decode(signerPrivateKey)
+    )
+
+    const SOLANA_RPC = 'https://api.mainnet-beta.solana.com'
+    
+    const sdk = new SDK({
+        url: 'https://api.1inch.com/fusion-plus',
+        authKey
+    })
+    ```
+
+    <Note>
+      Unlike EVM swaps, you don't need to pass a `blockchainProvider` to the SDK for Solana swaps, since order creation happens via direct Solana transactions.
+    </Note>
+  </Step>
+
+  <Step title="Define Swap Parameters">
+    Set up the swap parameters using Solana and EVM address formats:
+
+    ```typescript
+    const USDT_SOL = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+    const USDT_ETHEREUM = '0xdac17f958d2ee523a2206206994597c13d831ec7'
+
+    const maker = makerSigner.publicKey.toBase58()
+    const receiver = '0x962a836519109e162754161000D65d9Dc027Fa0F'
+
+    const srcToken = SolanaAddress.fromString(USDT_SOL)
+    const dstToken = EvmAddress.fromString(USDT_ETHEREUM)
+    const amount = 10_000_000n // 10 USDT
+
+    const srcChainId = NetworkEnum.SOLANA
+    const dstChainId = NetworkEnum.ETHEREUM
+    ```
+  </Step>
+
+  <Step title="Get Quote and Generate Secrets">
+    Request a quote and generate secrets for the atomic swap:
+
+    ```typescript
+    const quote = await sdk.getQuote({
+        amount: amount.toString(),
+        srcChainId,
+        dstChainId,
+        srcTokenAddress: srcToken.toString(),
+        dstTokenAddress: dstToken.toString(),
+        enableEstimate: true,
+        walletAddress: maker
+    })
+
+    console.log('got quote', quote)
+
+    const preset = quote.getPreset(quote.recommendedPreset)
+
+    const secrets = Array.from({ length: preset.secretsCount }).map(
+        () => '0x' + randomBytes(32).toString('hex')
+    )
+    const secretHashes = secrets.map(HashLock.hashSecret)
+    const leaves = HashLock.getMerkleLeaves(secrets)
+
+    const hashLock = secrets.length > 1 
+        ? HashLock.forMultipleFills(leaves) 
+        : HashLock.forSingleFill(secrets[0])
+    ```
+  </Step>
+
+  <Step title="Create and Announce Order">
+    Create the Solana order and announce it to the relayer:
+
+    ```typescript
+    const order = quote.createSolanaOrder({
+        hashLock,
+        receiver: EvmAddress.fromString(receiver),
+        preset: quote.recommendedPreset
+    })
+    
+    const orderHash = await sdk.announceOrder(order, quote.quoteId, secretHashes)
+    console.log('announced order to relayer', orderHash)
+    ```
+
+    <Warning>
+      You must announce the order to the relayer before publishing it on-chain. This ensures resolvers are ready to process your order.
+    </Warning>
+  </Step>
+
+  <Step title="Publish Order On-Chain">
+    Create and submit the Solana transaction to publish the order on-chain:
+
+    ```typescript
+    // Create the instruction for order creation
+    const ix = SvmSrcEscrowFactory.DEFAULT.createOrder(order, {
+        srcTokenProgramId: SolanaAddress.TOKEN_PROGRAM_ID
+    })
+
+    // Build Solana transaction
+    const tx = new web3.Transaction().add({
+        data: ix.data,
+        programId: new web3.PublicKey(ix.programId.toBuffer()),
+        keys: ix.accounts.map((a) => ({
+            isSigner: a.isSigner,
+            isWritable: a.isWritable,
+            pubkey: new web3.PublicKey(a.pubkey.toBuffer())
+        }))
+    })
+
+    const connection = new web3.Connection(SOLANA_RPC)
+    const result = await connection.sendTransaction(tx, [makerSigner])
+
+    console.log('submitted order', result)
+    await setTimeout(5000) // Wait for transaction to land
+    ```
+  </Step>
+
+  <Step title="Monitor and Submit Secrets">
+    Monitor the order and submit secrets as escrows are deployed:
+
+    ```typescript
+    const alreadyShared = new Set<number>()
+
+    while (true) {
+        const readyToAcceptSecretes = await sdk.getReadyToAcceptSecretFills(orderHash)
+        const idxes = readyToAcceptSecretes.fills.map((f) => f.idx)
+
+        for (const idx of idxes) {
+            if (!alreadyShared.has(idx)) {
+                // Verify escrow addresses before sharing secrets
+                await sdk.submitSecret(orderHash, secrets[idx])
+                alreadyShared.add(idx)
+                console.log('submitted secret', secrets[idx])
+            }
+        }
+
+        // Check if order finished
+        const { status } = await sdk.getOrderStatus(orderHash)
+
+        if (
+            status === OrderStatus.Executed ||
+            status === OrderStatus.Expired ||
+            status === OrderStatus.Refunded
+        ) {
+            break
+        }
+
+        await setTimeout(5000)
+    }
+
+    const statusResponse = await sdk.getOrderStatus(orderHash)
+    console.log(statusResponse)
+    ```
+  </Step>
+</Steps>
+
+## Full Working Example
+
+<CodeGroup>
+```typescript Solana to EVM Swap
+import {
+    NetworkEnum,
+    SDK,
+    SolanaAddress,
+    HashLock,
+    EvmAddress,
+    SvmSrcEscrowFactory,
+    OrderStatus
+} from '@1inch/cross-chain-sdk'
+import { utils, web3 } from '@coral-xyz/anchor'
+import { randomBytes } from 'node:crypto'
+import { setTimeout } from 'node:timers/promises'
+import assert from 'node:assert'
+
+const authKey = process.env.DEV_PORTAL_API_TOKEN
+assert(authKey, 'provide auth key in DEV_PORTAL_API_TOKEN')
+
+const signerPrivateKey = process.env.SOLANA_PRIVATE_KEY
+assert(signerPrivateKey, 'provide solana private key in SOLANA_PRIVATE_KEY')
+
+const makerSigner = web3.Keypair.fromSecretKey(
+    utils.bytes.bs58.decode(signerPrivateKey)
+)
+
+const SOLANA_RPC = 'https://api.mainnet-beta.solana.com'
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey
+})
+
+const USDT_SOL = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+const USDT_ETHEREUM = '0xdac17f958d2ee523a2206206994597c13d831ec7'
+
+const maker = makerSigner.publicKey.toBase58()
+const receiver = '0x962a836519109e162754161000D65d9Dc027Fa0F'
+
+const srcToken = SolanaAddress.fromString(USDT_SOL)
+const dstToken = EvmAddress.fromString(USDT_ETHEREUM)
+const amount = 10_000_000n // 10 USDT
+
+const srcChainId = NetworkEnum.SOLANA
+const dstChainId = NetworkEnum.ETHEREUM
+
+async function main(): Promise<void> {
+    const quote = await sdk.getQuote({
+        amount: amount.toString(),
+        srcChainId,
+        dstChainId,
+        srcTokenAddress: srcToken.toString(),
+        dstTokenAddress: dstToken.toString(),
+        enableEstimate: true,
+        walletAddress: maker
+    })
+
+    const preset = quote.getPreset(quote.recommendedPreset)
+    const secrets = Array.from({ length: preset.secretsCount }).map(
+        () => '0x' + randomBytes(32).toString('hex')
+    )
+    const secretHashes = secrets.map(HashLock.hashSecret)
+    const leaves = HashLock.getMerkleLeaves(secrets)
+
+    const hashLock = secrets.length > 1
+        ? HashLock.forMultipleFills(leaves)
+        : HashLock.forSingleFill(secrets[0])
+
+    const order = quote.createSolanaOrder({
+        hashLock,
+        receiver: EvmAddress.fromString(receiver),
+        preset: quote.recommendedPreset
+    })
+
+    const orderHash = await sdk.announceOrder(order, quote.quoteId, secretHashes)
+    console.log('announced order to relayer', orderHash)
+
+    const ix = SvmSrcEscrowFactory.DEFAULT.createOrder(order, {
+        srcTokenProgramId: SolanaAddress.TOKEN_PROGRAM_ID
+    })
+
+    const tx = new web3.Transaction().add({
+        data: ix.data,
+        programId: new web3.PublicKey(ix.programId.toBuffer()),
+        keys: ix.accounts.map((a) => ({
+            isSigner: a.isSigner,
+            isWritable: a.isWritable,
+            pubkey: new web3.PublicKey(a.pubkey.toBuffer())
+        }))
+    })
+
+    const connection = new web3.Connection(SOLANA_RPC)
+    const result = await connection.sendTransaction(tx, [makerSigner])
+
+    console.log('submitted order', result)
+    await setTimeout(5000)
+
+    const alreadyShared = new Set<number>()
+
+    while (true) {
+        const readyToAcceptSecretes = await sdk.getReadyToAcceptSecretFills(orderHash)
+        const idxes = readyToAcceptSecretes.fills.map((f) => f.idx)
+
+        for (const idx of idxes) {
+            if (!alreadyShared.has(idx)) {
+                await sdk.submitSecret(orderHash, secrets[idx])
+                alreadyShared.add(idx)
+                console.log('submitted secret', secrets[idx])
+            }
+        }
+
+        const { status } = await sdk.getOrderStatus(orderHash)
+
+        if (
+            status === OrderStatus.Executed ||
+            status === OrderStatus.Expired ||
+            status === OrderStatus.Refunded
+        ) {
+            break
+        }
+
+        await setTimeout(5000)
+    }
+
+    const statusResponse = await sdk.getOrderStatus(orderHash)
+    console.log(statusResponse)
+}
+
+main()
+```
+</CodeGroup>
+
+## Key Differences from EVM to EVM
+
+<Tabs>
+  <Tab title="Address Formats">
+    Solana uses base58-encoded addresses instead of hex:
+
+    ```typescript
+    // Solana address
+    const srcToken = SolanaAddress.fromString(
+        'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+    )
+
+    // EVM address
+    const dstToken = EvmAddress.fromString(
+        '0xdac17f958d2ee523a2206206994597c13d831ec7'
+    )
+    ```
+  </Tab>
+
+  <Tab title="Order Creation">
+    Solana orders use `createSolanaOrder()` and `announceOrder()`:
+
+    ```typescript
+    // Create Solana order
+    const order = quote.createSolanaOrder({
+        hashLock,
+        receiver: EvmAddress.fromString(receiver),
+        preset: quote.recommendedPreset
+    })
+
+    // Announce before on-chain submission
+    const orderHash = await sdk.announceOrder(
+        order, 
+        quote.quoteId, 
+        secretHashes
+    )
+    ```
+  </Tab>
+
+  <Tab title="Transaction Signing">
+    Use Solana's native transaction structure:
+
+    ```typescript
+    const connection = new web3.Connection(SOLANA_RPC)
+    const tx = new web3.Transaction().add(instruction)
+    
+    // Sign and send with Solana keypair
+    const result = await connection.sendTransaction(
+        tx, 
+        [makerSigner]
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Native Token Swaps
+
+To swap native SOL instead of SPL tokens, use the native address constant:
+
+```typescript
+const srcToken = SolanaAddress.NATIVE // For SOL
+```
+
+## Next Steps
+
+- Learn about [EVM to Solana swaps](/guides/evm-to-solana)
+- Explore [order tracking](/guides/order-tracking) for monitoring order status
+- Understand [integrator fees](/guides/integrator-fees) for monetization

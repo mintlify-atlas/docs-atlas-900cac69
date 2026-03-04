@@ -1,0 +1,285 @@
+---
+title: NetworkEnum
+description: Network chain ID enumeration
+---
+
+## Overview
+
+The `NetworkEnum` enum provides type-safe chain ID constants for all supported networks in the 1inch Cross-Chain SDK.
+
+## Enum Definition
+
+```typescript
+enum NetworkEnum {
+  ETHEREUM = 1,
+  POLYGON = 137,
+  ZKSYNC = 324,
+  BINANCE = 56,
+  ARBITRUM = 42161,
+  AVALANCHE = 43114,
+  OPTIMISM = 10,
+  FANTOM = 250,
+  GNOSIS = 100,
+  COINBASE = 8453,
+  LINEA = 59144,
+  SONIC = 146,
+  UNICHAIN = 130,
+  SOLANA = 501
+}
+```
+
+## Values
+
+<ParamField path="ETHEREUM" type="1">
+  Ethereum Mainnet
+</ParamField>
+
+<ParamField path="POLYGON" type="137">
+  Polygon (formerly Matic)
+</ParamField>
+
+<ParamField path="BINANCE" type="56">
+  BNB Chain (formerly BSC)
+</ParamField>
+
+<ParamField path="ARBITRUM" type="42161">
+  Arbitrum One
+</ParamField>
+
+<ParamField path="OPTIMISM" type="10">
+  Optimism
+</ParamField>
+
+<ParamField path="AVALANCHE" type="43114">
+  Avalanche C-Chain
+</ParamField>
+
+<ParamField path="GNOSIS" type="100">
+  Gnosis Chain (formerly xDai)
+</ParamField>
+
+<ParamField path="COINBASE" type="8453">
+  Base (Coinbase Layer 2)
+</ParamField>
+
+<ParamField path="ZKSYNC" type="324">
+  zkSync Era
+</ParamField>
+
+<ParamField path="LINEA" type="59144">
+  Linea (Consensys zkEVM)
+</ParamField>
+
+<ParamField path="SONIC" type="146">
+  Sonic
+</ParamField>
+
+<ParamField path="UNICHAIN" type="130">
+  Unichain
+</ParamField>
+
+<ParamField path="SOLANA" type="501">
+  Solana
+</ParamField>
+
+## Type Definitions
+
+```typescript
+// Array of all supported chains
+const SupportedChains: readonly NetworkEnum[]
+
+// Type for supported chains
+type SupportedChain = /* union of all supported chains */
+
+// Type for EVM chains only (excludes Solana)
+type EvmChain = Exclude<SupportedChain, NetworkEnum.SOLANA>
+
+// Type for Solana
+type SolanaChain = NetworkEnum.SOLANA
+```
+
+## Helper Functions
+
+### isSupportedChain
+
+Checks if a chain ID is supported.
+
+```typescript
+function isSupportedChain(chain: unknown): chain is SupportedChain
+```
+
+**Example:**
+```typescript
+import { isSupportedChain, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+console.log(isSupportedChain(NetworkEnum.ETHEREUM)) // true
+console.log(isSupportedChain(1)) // true
+console.log(isSupportedChain(999)) // false
+```
+
+### isEvm
+
+Checks if a chain is an EVM-compatible chain.
+
+```typescript
+function isEvm(chain: SupportedChain): chain is EvmChain
+```
+
+**Example:**
+```typescript
+import { isEvm, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+console.log(isEvm(NetworkEnum.ETHEREUM)) // true
+console.log(isEvm(NetworkEnum.POLYGON)) // true
+console.log(isEvm(NetworkEnum.SOLANA)) // false
+```
+
+### isSolana
+
+Checks if a chain is Solana.
+
+```typescript
+function isSolana(chain: SupportedChain): chain is SolanaChain
+```
+
+**Example:**
+```typescript
+import { isSolana, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+console.log(isSolana(NetworkEnum.SOLANA)) // true
+console.log(isSolana(NetworkEnum.ETHEREUM)) // false
+```
+
+## Usage Examples
+
+### In Quote Requests
+
+```typescript
+import { SDK, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({ /* config */ })
+
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.POLYGON,
+  srcTokenAddress: '0x...',
+  dstTokenAddress: '0x...',
+  amount: '1000000',
+  walletAddress: '0x...',
+  enableEstimate: true
+})
+```
+
+### Type-Safe Chain Handling
+
+```typescript
+import { NetworkEnum, isEvm, isSolana } from '@1inch/cross-chain-sdk'
+
+function getChainName(chainId: NetworkEnum): string {
+  switch (chainId) {
+    case NetworkEnum.ETHEREUM:
+      return 'Ethereum'
+    case NetworkEnum.POLYGON:
+      return 'Polygon'
+    case NetworkEnum.BINANCE:
+      return 'BNB Chain'
+    case NetworkEnum.ARBITRUM:
+      return 'Arbitrum'
+    case NetworkEnum.OPTIMISM:
+      return 'Optimism'
+    case NetworkEnum.AVALANCHE:
+      return 'Avalanche'
+    case NetworkEnum.GNOSIS:
+      return 'Gnosis'
+    case NetworkEnum.COINBASE:
+      return 'Base'
+    case NetworkEnum.ZKSYNC:
+      return 'zkSync Era'
+    case NetworkEnum.LINEA:
+      return 'Linea'
+    case NetworkEnum.SONIC:
+      return 'Sonic'
+    case NetworkEnum.UNICHAIN:
+      return 'Unichain'
+    case NetworkEnum.SOLANA:
+      return 'Solana'
+    default:
+      return 'Unknown'
+  }
+}
+
+console.log(getChainName(NetworkEnum.ETHEREUM)) // 'Ethereum'
+```
+
+### Chain-Specific Logic
+
+```typescript
+function handleOrder(srcChainId: NetworkEnum, dstChainId: NetworkEnum) {
+  if (isEvm(srcChainId) && isEvm(dstChainId)) {
+    console.log('EVM to EVM swap')
+    // Use EVM-specific logic
+  } else if (isSolana(srcChainId) && isEvm(dstChainId)) {
+    console.log('Solana to EVM swap')
+    // Use Solana-specific logic
+  } else if (isEvm(srcChainId) && isSolana(dstChainId)) {
+    console.log('EVM to Solana swap')
+    // Use EVM to Solana logic
+  }
+}
+```
+
+### Iterating Supported Chains
+
+```typescript
+import { SupportedChains } from '@1inch/cross-chain-sdk'
+
+console.log('Supported chains:')
+SupportedChains.forEach(chainId => {
+  console.log(`  ${chainId}: ${getChainName(chainId)}`)
+})
+```
+
+### Validation
+
+```typescript
+function validateCrossChainSwap(
+  srcChainId: number,
+  dstChainId: number
+): void {
+  if (!isSupportedChain(srcChainId)) {
+    throw new Error(`Source chain ${srcChainId} is not supported`)
+  }
+  
+  if (!isSupportedChain(dstChainId)) {
+    throw new Error(`Destination chain ${dstChainId} is not supported`)
+  }
+  
+  if (srcChainId === dstChainId) {
+    throw new Error('Source and destination chains must be different')
+  }
+  
+  console.log('✓ Valid cross-chain swap configuration')
+}
+
+validateCrossChainSwap(NetworkEnum.ETHEREUM, NetworkEnum.POLYGON)
+```
+
+## Notes
+
+<Note>
+Chain IDs match the official chain IDs from [chainlist.org](https://chainlist.org), except Solana which uses a custom ID of 501.
+</Note>
+
+<Info>
+Use `NetworkEnum` constants instead of raw numbers for type safety and better code readability.
+</Info>
+
+<Warning>
+The SDK does not support same-chain swaps. Source and destination chains must be different.
+</Warning>
+
+## Related
+
+- [Supported Chains](/api/networks/supported-chains) - Detailed chain information
+- [Quote Params](/api/quotes/quote-params) - Using chain IDs in quotes
+- [Order Types](/api/orders/order-types) - Chain-specific order types

@@ -1,0 +1,296 @@
+---
+title: Supported Chains
+description: Networks supported by the 1inch Cross-Chain SDK
+---
+
+## Overview
+
+The 1inch Cross-Chain SDK supports atomic swaps across multiple EVM chains and Solana, enabling trustless cross-chain token transfers.
+
+## Supported Networks
+
+<CardGroup cols={2}>
+  <Card title="Ethereum" icon="ethereum">
+    Chain ID: `1`
+    
+    Native: ETH
+  </Card>
+  
+  <Card title="Polygon" icon="triangle">
+    Chain ID: `137`
+    
+    Native: MATIC
+  </Card>
+  
+  <Card title="BNB Chain" icon="coins">
+    Chain ID: `56`
+    
+    Native: BNB
+  </Card>
+  
+  <Card title="Arbitrum" icon="circle-nodes">
+    Chain ID: `42161`
+    
+    Native: ETH
+  </Card>
+  
+  <Card title="Optimism" icon="o">
+    Chain ID: `10`
+    
+    Native: ETH
+  </Card>
+  
+  <Card title="Avalanche" icon="mountain">
+    Chain ID: `43114`
+    
+    Native: AVAX
+  </Card>
+  
+  <Card title="Gnosis" icon="link">
+    Chain ID: `100`
+    
+    Native: xDAI
+  </Card>
+  
+  <Card title="Base (Coinbase)" icon="layer-group">
+    Chain ID: `8453`
+    
+    Native: ETH
+  </Card>
+  
+  <Card title="zkSync Era" icon="shield">
+    Chain ID: `324`
+    
+    Native: ETH
+  </Card>
+  
+  <Card title="Linea" icon="line-columns">
+    Chain ID: `59144`
+    
+    Native: ETH
+  </Card>
+  
+  <Card title="Sonic" icon="bolt">
+    Chain ID: `146`
+    
+    Native: S
+  </Card>
+  
+  <Card title="Unichain" icon="unicorn">
+    Chain ID: `130`
+    
+    Native: ETH
+  </Card>
+  
+  <Card title="Solana" icon="s">
+    Chain ID: `501`
+    
+    Native: SOL
+  </Card>
+</CardGroup>
+
+## Chain Details
+
+### Ethereum (NetworkEnum.ETHEREUM)
+
+- **Chain ID:** 1
+- **Native Token:** ETH
+- **Type:** EVM
+- **RPC:** Multiple providers available
+
+### Polygon (NetworkEnum.POLYGON)
+
+- **Chain ID:** 137
+- **Native Token:** MATIC
+- **Type:** EVM
+- **RPC:** https://polygon-rpc.com
+
+### BNB Chain (NetworkEnum.BINANCE)
+
+- **Chain ID:** 56
+- **Native Token:** BNB
+- **Type:** EVM
+- **RPC:** https://bsc-dataseed.binance.org
+
+### Arbitrum (NetworkEnum.ARBITRUM)
+
+- **Chain ID:** 42161
+- **Native Token:** ETH
+- **Type:** EVM Layer 2
+- **RPC:** https://arb1.arbitrum.io/rpc
+
+### Optimism (NetworkEnum.OPTIMISM)
+
+- **Chain ID:** 10
+- **Native Token:** ETH
+- **Type:** EVM Layer 2
+- **RPC:** https://mainnet.optimism.io
+
+### Avalanche (NetworkEnum.AVALANCHE)
+
+- **Chain ID:** 43114
+- **Native Token:** AVAX
+- **Type:** EVM
+- **RPC:** https://api.avax.network/ext/bc/C/rpc
+
+### Gnosis (NetworkEnum.GNOSIS)
+
+- **Chain ID:** 100
+- **Native Token:** xDAI
+- **Type:** EVM
+- **RPC:** https://rpc.gnosischain.com
+
+### Base / Coinbase (NetworkEnum.COINBASE)
+
+- **Chain ID:** 8453
+- **Native Token:** ETH
+- **Type:** EVM Layer 2
+- **RPC:** https://mainnet.base.org
+
+### zkSync Era (NetworkEnum.ZKSYNC)
+
+- **Chain ID:** 324
+- **Native Token:** ETH
+- **Type:** zkEVM
+- **RPC:** https://mainnet.era.zksync.io
+
+### Linea (NetworkEnum.LINEA)
+
+- **Chain ID:** 59144
+- **Native Token:** ETH
+- **Type:** zkEVM
+- **RPC:** https://rpc.linea.build
+
+### Sonic (NetworkEnum.SONIC)
+
+- **Chain ID:** 146
+- **Native Token:** S
+- **Type:** EVM
+- **RPC:** Contact Sonic for RPC details
+
+### Unichain (NetworkEnum.UNICHAIN)
+
+- **Chain ID:** 130
+- **Native Token:** ETH
+- **Type:** EVM
+- **RPC:** Contact Unichain for RPC details
+
+### Solana (NetworkEnum.SOLANA)
+
+- **Chain ID:** 501
+- **Native Token:** SOL
+- **Type:** Non-EVM
+- **RPC:** https://api.mainnet-beta.solana.com
+
+## Native Token Addresses
+
+For EVM chains, use the following address for native tokens:
+
+```typescript
+const NATIVE_TOKEN = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+```
+
+Or use the SDK constant:
+
+```typescript
+import { EvmAddress } from '@1inch/cross-chain-sdk'
+
+const nativeToken = EvmAddress.NATIVE.toString()
+```
+
+For Solana:
+
+```typescript
+import { SolanaAddress } from '@1inch/cross-chain-sdk'
+
+const nativeSOL = SolanaAddress.NATIVE.toString()
+```
+
+## Usage Examples
+
+### Check if Chain is EVM
+
+```typescript
+import { isEvm, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+console.log(isEvm(NetworkEnum.ETHEREUM)) // true
+console.log(isEvm(NetworkEnum.POLYGON)) // true
+console.log(isEvm(NetworkEnum.SOLANA)) // false
+```
+
+### Check if Chain is Solana
+
+```typescript
+import { isSolana, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+console.log(isSolana(NetworkEnum.SOLANA)) // true
+console.log(isSolana(NetworkEnum.ETHEREUM)) // false
+```
+
+### Validate Chain Support
+
+```typescript
+import { isSupportedChain, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+console.log(isSupportedChain(NetworkEnum.ETHEREUM)) // true
+console.log(isSupportedChain(NetworkEnum.POLYGON)) // true
+console.log(isSupportedChain(999)) // false
+```
+
+### Cross-Chain Combinations
+
+```typescript
+// EVM to EVM
+const quote1 = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.POLYGON,
+  // ...
+})
+
+// EVM to Solana
+const quote2 = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.SOLANA,
+  // ...
+})
+
+// Solana to EVM
+const quote3 = await sdk.getQuote({
+  srcChainId: NetworkEnum.SOLANA,
+  dstChainId: NetworkEnum.ARBITRUM,
+  // ...
+})
+```
+
+## Popular Token Addresses
+
+### Ethereum
+
+- **USDT:** `0xdac17f958d2ee523a2206206994597c13d831ec7`
+- **USDC:** `0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`
+- **DAI:** `0x6b175474e89094c44da98b954eedeac495271d0f`
+- **WETH:** `0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2`
+
+### Polygon
+
+- **USDT:** `0xc2132d05d31c914a87c6611c10748aeb04b58e8f`
+- **USDC:** `0x2791bca1f2de4661ed88a30c99a7a9449aa84174`
+- **WMATIC:** `0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270`
+
+### BNB Chain
+
+- **USDT:** `0x55d398326f99059ff775485246999027b3197955`
+- **USDC:** `0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d`
+- **WBNB:** `0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c`
+
+### Solana
+
+- **USDT:** `Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB`
+- **USDC:** `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
+- **wSOL:** `So11111111111111111111111111111111111111112`
+
+## Related
+
+- [NetworkEnum](/api/networks/network-enum) - Network enumeration reference
+- [EvmAddress](/api/addresses/evm-address) - EVM address utilities
+- [SolanaAddress](/api/addresses/solana-address) - Solana address utilities

@@ -1,0 +1,379 @@
+---
+title: 'Custom Presets'
+description: 'Fine-tune auction parameters for optimal swap execution'
+---
+
+Custom presets allow you to override the default auction parameters (fast, medium, slow) and fine-tune the Dutch auction for your specific use case.
+
+## Overview
+
+By default, the SDK provides three preset modes:
+- **Fast**: Higher initial rate bump, shorter auction duration
+- **Medium**: Balanced parameters for most use cases
+- **Slow**: Lower initial rate bump, longer auction duration
+
+Custom presets give you full control over:
+- Auction duration
+- Starting and ending token amounts
+- Intermediate auction points for non-linear price curves
+
+## Getting a Quote with Custom Preset
+
+### Basic Usage
+
+```typescript
+import { SDK, QuoterRequest, QuoterCustomPresetRequest } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey: 'your-auth-key'
+})
+
+// Create quote request
+const quoteParams = QuoterRequest.new({
+    srcChain: NetworkEnum.ETHEREUM,
+    dstChain: NetworkEnum.POLYGON,
+    srcTokenAddress: '0x...',
+    dstTokenAddress: '0x...',
+    amount: '1000000000000000000', // 1 token with 18 decimals
+    walletAddress: '0xYourAddress'
+})
+
+// Define custom preset
+const customPreset = QuoterCustomPresetRequest.new({
+    customPreset: {
+        auctionDuration: 180,        // 180 seconds (3 minutes)
+        auctionStartAmount: '950000000000000000',  // Start at 0.95 tokens
+        auctionEndAmount: '900000000000000000'     // End at 0.90 tokens
+    }
+})
+
+// Get quote with custom preset
+const quote = await sdk.getQuoteWithCustomPreset(quoteParams, customPreset)
+```
+
+## Custom Preset Parameters
+
+### Required Fields
+
+#### auctionDuration
+
+Duration of the Dutch auction in seconds.
+
+```typescript
+auctionDuration: number // Must be integer (not float)
+```
+
+**Example:**
+```typescript
+auctionDuration: 300  // 5 minutes
+```
+
+#### auctionStartAmount
+
+The destination token amount at the start of the auction (best rate for user).
+
+```typescript
+auctionStartAmount: string // BigInt string representation
+```
+
+**Example:**
+```typescript
+auctionStartAmount: '1050000000000000000' // 1.05 tokens
+```
+
+#### auctionEndAmount
+
+The destination token amount at the end of the auction (worst acceptable rate).
+
+```typescript
+auctionEndAmount: string // BigInt string representation
+```
+
+**Example:**
+```typescript
+auctionEndAmount: '950000000000000000' // 0.95 tokens
+```
+
+**Important:** `auctionStartAmount` must be greater than `auctionEndAmount` for the auction to make sense.
+
+### Optional Fields
+
+#### points
+
+Define intermediate points to create a non-linear price curve.
+
+```typescript
+points?: CustomPresetPoint[]
+
+type CustomPresetPoint = {
+    toTokenAmount: string  // Destination token amount at this point
+    delay: number          // Seconds from auction start
+}
+```
+
+**Example:**
+```typescript
+points: [
+    {
+        toTokenAmount: '1000000000000000000',  // 1.0 tokens
+        delay: 60  // At 60 seconds
+    },
+    {
+        toTokenAmount: '980000000000000000',   // 0.98 tokens
+        delay: 120 // At 120 seconds
+    },
+    {
+        toTokenAmount: '960000000000000000',   // 0.96 tokens
+        delay: 180 // At 180 seconds
+    }
+]
+```
+
+**Validation:**
+- Each point's `toTokenAmount` must be between `auctionStartAmount` and `auctionEndAmount`
+- Points should be ordered by increasing `delay`
+
+## Preset Data Structure
+
+The quote response includes full preset information:
+
+```typescript
+type PresetData = {
+    auctionDuration: number
+    startAuctionIn: number
+    initialRateBump: number
+    auctionStartAmount: string
+    startAmount: string              // Includes gas bump
+    auctionEndAmount: string
+    costInDstToken: string
+    points: AuctionPoint[]
+    allowPartialFills: boolean
+    allowMultipleFills: boolean
+    gasCost: {
+        gasBumpEstimate: number
+        gasPriceEstimate: string
+    }
+    exclusiveResolver: string | null
+    secretsCount: number
+}
+```
+
+### Key Fields
+
+**startAmount vs auctionStartAmount:**
+- `auctionStartAmount`: Your specified starting amount
+- `startAmount`: Adjusted for gas bump estimate
+
+**gasCost:**
+- `gasBumpEstimate`: Estimated gas cost in destination tokens
+- `gasPriceEstimate`: Current gas price estimate
+
+**exclusiveResolver:**
+- If set, only this resolver can fill the order initially
+- Becomes public after `startAuctionIn` period
+
+## Use Cases
+
+### Fast Execution with Tight Spread
+
+For time-sensitive swaps where you want quick execution:
+
+```typescript
+const customPreset = QuoterCustomPresetRequest.new({
+    customPreset: {
+        auctionDuration: 60,  // 1 minute only
+        auctionStartAmount: '1020000000000000000',  // 1.02 tokens (2% better)
+        auctionEndAmount: '1000000000000000000'     // 1.0 tokens (market rate)
+    }
+})
+```
+
+### Patient Execution with Wide Spread
+
+For non-urgent swaps where you want to maximize value:
+
+```typescript
+const customPreset = QuoterCustomPresetRequest.new({
+    customPreset: {
+        auctionDuration: 600,  // 10 minutes
+        auctionStartAmount: '1100000000000000000',  // 1.10 tokens (10% better)
+        auctionEndAmount: '1000000000000000000'     // 1.0 tokens (market rate)
+    }
+})
+```
+
+### Non-Linear Price Curve
+
+Create a curve that drops quickly initially, then slowly:
+
+```typescript
+const customPreset = QuoterCustomPresetRequest.new({
+    customPreset: {
+        auctionDuration: 300,  // 5 minutes
+        auctionStartAmount: '1100000000000000000',  // 1.10 tokens
+        auctionEndAmount: '1000000000000000000',    // 1.0 tokens
+        points: [
+            {
+                toTokenAmount: '1070000000000000000',  // Drop to 1.07 quickly
+                delay: 30  // After 30 seconds
+            },
+            {
+                toTokenAmount: '1040000000000000000',  // Drop to 1.04
+                delay: 120 // After 2 minutes
+            },
+            {
+                toTokenAmount: '1020000000000000000',  // Drop to 1.02 slowly
+                delay: 240 // After 4 minutes
+            }
+        ]
+    }
+})
+```
+
+### Market Making Strategy
+
+Provide liquidity with competitive rates:
+
+```typescript
+const customPreset = QuoterCustomPresetRequest.new({
+    customPreset: {
+        auctionDuration: 180,
+        auctionStartAmount: '1005000000000000000',  // 0.5% better than market
+        auctionEndAmount: '995000000000000000'      // 0.5% worse than market
+    }
+})
+```
+
+## Validation
+
+The SDK validates custom presets before sending to the API:
+
+### Amount Validation
+
+```typescript
+// ❌ Invalid - not a valid BigInt string
+auctionStartAmount: 'invalid'
+
+// ✅ Valid
+auctionStartAmount: '1000000000000000000'
+```
+
+### Duration Validation
+
+```typescript
+// ❌ Invalid - must be integer
+auctionDuration: 180.5
+
+// ❌ Invalid - not a number
+auctionDuration: '180'
+
+// ✅ Valid
+auctionDuration: 180
+```
+
+### Points Validation
+
+```typescript
+// ❌ Invalid - point outside auction range
+points: [
+    {
+        toTokenAmount: '1200000000000000000',  // Higher than auctionStartAmount
+        delay: 60
+    }
+]
+
+// ✅ Valid - all points within range
+points: [
+    {
+        toTokenAmount: '1050000000000000000',
+        delay: 60
+    }
+]
+```
+
+## Error Handling
+
+```typescript
+try {
+    const quote = await sdk.getQuoteWithCustomPreset(quoteParams, customPreset)
+    console.log('Quote received:', quote)
+} catch (error) {
+    if (error.message.includes('Invalid auctionStartAmount')) {
+        console.error('Check your start amount format')
+    } else if (error.message.includes('Invalid auctionDuration')) {
+        console.error('Duration must be an integer')
+    } else if (error.message.includes('points should be in range')) {
+        console.error('All points must be between start and end amounts')
+    } else {
+        console.error('Unexpected error:', error)
+    }
+}
+```
+
+## Creating Orders with Custom Presets
+
+Once you have a quote with a custom preset, create an order as usual:
+
+```typescript
+const quote = await sdk.getQuoteWithCustomPreset(quoteParams, customPreset)
+
+const order = quote.createOrder(PresetEnum.custom, {
+    secrets: [secret],
+    secretHashes: [secretHash],
+    hashLock
+})
+
+const signature = await wallet.signTypedData(...)
+
+const orderInfo = await sdk.submitOrder(
+    quote,
+    order,
+    PresetEnum.custom,
+    signature,
+    [secretHash]
+)
+```
+
+## Best Practices
+
+### Start with Default Presets
+
+Before creating custom presets, test with the default presets to understand typical behavior:
+
+```typescript
+const quote = await sdk.getQuote(quoteParams)
+console.log('Fast preset:', quote.presets.fast)
+console.log('Medium preset:', quote.presets.medium)
+console.log('Slow preset:', quote.presets.slow)
+```
+
+### Consider Gas Costs
+
+The `startAmount` includes a gas bump. Factor this into your calculations:
+
+```typescript
+const preset = quote.presets.custom
+const gasBump = BigInt(preset.gasCost.gasBumpEstimate)
+const actualStart = BigInt(preset.startAmount) - gasBump
+```
+
+### Test in Low-Value Scenarios
+
+Always test custom presets with small amounts first:
+
+```typescript
+// Test with $10 equivalent
+amount: '10000000'  // 10 USDC
+```
+
+### Monitor Fill Rates
+
+Track how quickly orders fill with different preset parameters:
+
+```typescript
+ws.order.onOrderFilled((event) => {
+    const fillTime = Date.now() - orderCreatedTime
+    console.log(`Order filled in ${fillTime}ms`)
+})
+```

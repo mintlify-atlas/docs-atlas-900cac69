@@ -1,0 +1,554 @@
+---
+title: 'Order Cancellation'
+description: 'Cancel orders and recover funds on both EVM and Solana chains'
+---
+
+The SDK provides methods to cancel on-chain orders and recover funds before they are filled by resolvers.
+
+## Overview
+
+Orders can be cancelled in two scenarios:
+1. **User Cancellation**: Cancel your own order before it's filled
+2. **Resolver Cancellation**: Resolvers can cancel premium orders for a fee
+
+Cancellation is available on both EVM and Solana chains, with slightly different workflows.
+
+## Building Cancel Order Call Data (EVM)
+
+For EVM chains, you need to build the cancel order transaction call data.
+
+### Basic Usage
+
+```typescript
+import { SDK } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey: 'your-auth-key'
+})
+
+const orderHash = '0x1234...'
+
+// Build cancel order call data
+const callData = await sdk.buildCancelOrderCallData(orderHash)
+
+// Send transaction
+const tx = await wallet.sendTransaction({
+    to: limitOrderProtocolAddress,
+    data: callData,
+    gasLimit: 200000
+})
+
+await tx.wait()
+console.log('Order cancelled:', tx.hash)
+```
+
+### How It Works
+
+1. Fetches order details from the API using the order hash
+2. Extracts the maker traits from the order
+3. Encodes the cancel order function call
+4. Returns ready-to-send transaction data
+
+**Requirements:**
+- Order must exist and be in a cancellable state
+- Source chain must be EVM (Ethereum, Polygon, BSC, etc.)
+- Transaction must be sent by the order maker or authorized canceller
+
+### Error Handling
+
+```typescript
+try {
+    const callData = await sdk.buildCancelOrderCallData(orderHash)
+    // Send transaction
+} catch (error) {
+    if (error.message.includes('Can not get order')) {
+        console.error('Order not found:', orderHash)
+    } else if (error.message.includes('expected evm src chain')) {
+        console.error('Source chain must be EVM')
+    } else {
+        console.error('Failed to build cancel data:', error)
+    }
+}
+```
+
+## Getting Cancellable Orders
+
+Query orders that can be cancelled by resolvers (premium service).
+
+### EVM Chains
+
+```typescript
+import { ChainType, ApiVersion } from '@1inch/cross-chain-sdk'
+
+// Get cancellable EVM orders
+const evmOrders = await sdk.getCancellableOrders(
+    ChainType.EVM,
+    1,      // page
+    100     // limit
+)
+
+console.log('Total cancellable EVM orders:', evmOrders.total)
+
+for (const order of evmOrders.items) {
+    console.log('Order:', {
+        orderHash: order.orderHash,
+        srcChain: order.srcChainId,
+        dstChain: order.dstChainId,
+        makerAddress: order.order.maker,
+        makerAsset: order.order.makerAsset,
+        takerAsset: order.order.takerAsset,
+        makingAmount: order.order.makingAmount,
+        takingAmount: order.order.takingAmount,
+        cancellationFee: order.cancellationReward // Fee for cancelling
+    })
+}
+```
+
+### Solana Orders
+
+```typescript
+// Get cancellable Solana orders
+const svmOrders = await sdk.getCancellableOrders(
+    ChainType.SVM,
+    1,      // page
+    100     // limit
+)
+
+console.log('Total cancellable Solana orders:', svmOrders.total)
+
+for (const order of svmOrders.items) {
+    console.log('Solana Order:', {
+        orderHash: order.orderHash,
+        srcChain: order.srcChainId,
+        dstChain: order.dstChainId,
+        escrowAddress: order.escrowAddress,
+        cancellationReward: order.cancellationReward
+    })
+}
+```
+
+### Filtering by API Version
+
+```typescript
+import { ApiVersion } from '@1inch/cross-chain-sdk'
+
+// Get only v1.2 cancellable orders
+const orders = await sdk.getCancellableOrders(
+    ChainType.EVM,
+    1,
+    100,
+    [ApiVersion.V1_2]
+)
+
+// Get only v1.1 cancellable orders
+const legacyOrders = await sdk.getCancellableOrders(
+    ChainType.EVM,
+    1,
+    100,
+    [ApiVersion.V1_1]
+)
+
+// Get both versions
+const allOrders = await sdk.getCancellableOrders(
+    ChainType.EVM,
+    1,
+    100,
+    [ApiVersion.V1_1, ApiVersion.V1_2]
+)
+```
+
+### Pagination
+
+```typescript
+// Fetch all cancellable orders
+const allOrders = []
+let page = 1
+const limit = 100
+
+while (true) {
+    const result = await sdk.getCancellableOrders(
+        ChainType.EVM,
+        page,
+        limit
+    )
+    
+    allOrders.push(...result.items)
+    
+    if (allOrders.length >= result.total) {
+        break
+    }
+    
+    page++
+}
+
+console.log(`Fetched ${allOrders.length} cancellable orders`)
+```
+
+## Order Cancellation Types
+
+### EvmOrderCancellationData
+
+```typescript
+type EvmOrderCancellationData = {
+    orderHash: string
+    srcChainId: number
+    dstChainId: number
+    order: LimitOrderV4Struct
+    extension: string
+    signature: string
+    quoteId: string
+    cancellationReward?: string  // Fee for cancelling this order
+}
+```
+
+### SvmOrderCancellationData
+
+```typescript
+type SvmOrderCancellationData = {
+    orderHash: string
+    srcChainId: number
+    dstChainId: number
+    escrowAddress: string        // Solana escrow program address
+    cancellationReward?: string  // Fee for cancelling this order
+}
+```
+
+## Cancellation Workflow
+
+### User-Initiated Cancellation
+
+```typescript
+import { SDK } from '@1inch/cross-chain-sdk'
+import { ethers } from 'ethers'
+
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey: 'your-auth-key'
+})
+
+const wallet = new ethers.Wallet(privateKey, provider)
+
+// 1. Get order hash from order creation or tracking
+const orderHash = '0x1234...'
+
+// 2. Build cancel call data
+const callData = await sdk.buildCancelOrderCallData(orderHash)
+
+// 3. Send cancellation transaction
+const tx = await wallet.sendTransaction({
+    to: limitOrderProtocolAddress,
+    data: callData,
+    gasLimit: 200000
+})
+
+// 4. Wait for confirmation
+const receipt = await tx.wait()
+console.log('Order cancelled in block:', receipt.blockNumber)
+
+// 5. Verify cancellation via WebSocket
+ws.order.onOrderCancelled((event) => {
+    if (event.data.orderHash === orderHash) {
+        console.log('Cancellation confirmed:', event.data)
+    }
+})
+```
+
+### Resolver-Initiated Cancellation
+
+```typescript
+import { ChainType } from '@1inch/cross-chain-sdk'
+
+// 1. Query cancellable orders
+const orders = await sdk.getCancellableOrders(
+    ChainType.EVM,
+    1,
+    100
+)
+
+// 2. Filter profitable orders
+const profitableOrders = orders.items.filter(order => {
+    const reward = BigInt(order.cancellationReward || '0')
+    const gasCost = BigInt('50000000000000000') // 0.05 ETH estimated gas
+    return reward > gasCost
+})
+
+// 3. Cancel orders
+for (const order of profitableOrders) {
+    try {
+        const callData = await sdk.buildCancelOrderCallData(order.orderHash)
+        
+        const tx = await wallet.sendTransaction({
+            to: limitOrderProtocolAddress,
+            data: callData,
+            gasLimit: 200000
+        })
+        
+        console.log(`Cancelled order ${order.orderHash}:`, tx.hash)
+        console.log(`Expected reward: ${order.cancellationReward}`)
+    } catch (error) {
+        console.error(`Failed to cancel ${order.orderHash}:`, error)
+    }
+}
+```
+
+## Refund Process
+
+When an order is cancelled, funds are refunded based on the escrow state:
+
+### Source Chain (EVM)
+
+1. **Before Escrow Deployment**: Order is cancelled in the limit order protocol, no escrow exists
+2. **After Escrow Deployment**: Escrow contract must be cancelled, funds returned to maker
+
+```typescript
+// Check if escrow was deployed
+const escrowAddress = computeEscrowAddress(orderHash)
+const code = await provider.getCode(escrowAddress)
+
+if (code === '0x') {
+    console.log('No escrow deployed, order cancelled in protocol')
+} else {
+    console.log('Escrow deployed, cancelling escrow contract')
+    // Escrow will refund maker + safety deposit
+}
+```
+
+### Destination Chain
+
+If destination escrow was deployed, it must be cancelled separately:
+
+```typescript
+// Cancel destination escrow (if deployed)
+const dstEscrowAddress = computeEscrowAddress(orderHash)
+const dstCode = await dstProvider.getCode(dstEscrowAddress)
+
+if (dstCode !== '0x') {
+    // Wait for timelock expiry
+    // Then call cancel() on destination escrow
+    console.log('Destination escrow exists, will refund after timelock')
+}
+```
+
+## Timelock Considerations
+
+Orders have different timelocks for cancellation:
+
+```typescript
+const timeLocks = quote.timeLocks
+
+console.log('Source Chain Timelocks:', {
+    cancellation: timeLocks.srcCancellation,      // Maker can cancel after this
+    publicCancellation: timeLocks.srcPublicCancellation  // Anyone can cancel after this
+})
+
+console.log('Destination Chain Timelocks:', {
+    cancellation: timeLocks.dstCancellation       // Cancellation timeout
+})
+```
+
+### Cancellation Windows
+
+- **Private Cancellation**: Only maker can cancel after `srcCancellation` seconds
+- **Public Cancellation**: Anyone can cancel after `srcPublicCancellation` seconds
+- **Premium Cancellation**: Resolvers can cancel before timelocks for a fee
+
+## WebSocket Event Monitoring
+
+Track cancellation events in real-time:
+
+```typescript
+import { WebSocketApi } from '@1inch/cross-chain-sdk'
+
+const ws = new WebSocketApi({
+    url: 'wss://api.1inch.com/fusion-plus/ws',
+    authKey: 'your-auth-key'
+})
+
+// Monitor cancellation events
+ws.order.onOrderCancelled((event) => {
+    console.log('Order cancelled:', {
+        orderHash: event.data.orderHash,
+        remainingAmount: event.data.remainingMakerAmount
+    })
+})
+
+// Monitor all order events
+ws.order.onOrder((event) => {
+    if (event.event === 'order_cancelled') {
+        console.log('Cancellation detected:', event.data)
+    }
+})
+```
+
+## Best Practices
+
+### Check Order Status First
+
+```typescript
+const orderStatus = await sdk.getOrderStatus({ orderHash })
+
+if (orderStatus.status === 'filled') {
+    console.log('Order already filled, cannot cancel')
+    return
+}
+
+if (orderStatus.status === 'cancelled') {
+    console.log('Order already cancelled')
+    return
+}
+
+if (orderStatus.status === 'pending') {
+    // Proceed with cancellation
+    const callData = await sdk.buildCancelOrderCallData(orderHash)
+}
+```
+
+### Estimate Gas Before Cancelling
+
+```typescript
+const callData = await sdk.buildCancelOrderCallData(orderHash)
+
+const gasEstimate = await provider.estimateGas({
+    to: limitOrderProtocolAddress,
+    from: wallet.address,
+    data: callData
+})
+
+const gasPrice = await provider.getFeeData()
+const estimatedCost = gasEstimate * gasPrice.gasPrice
+
+console.log(`Estimated cancellation cost: ${ethers.formatEther(estimatedCost)} ETH`)
+
+// Compare with cancellation reward for resolver cancellations
+if (cancellationReward > estimatedCost) {
+    console.log('Cancellation is profitable')
+}
+```
+
+### Handle Partial Fills
+
+```typescript
+ws.order.onOrderFilledPartially((event) => {
+    console.log('Order partially filled:', {
+        orderHash: event.data.orderHash,
+        remainingAmount: event.data.remainingMakerAmount
+    })
+    
+    // Can still cancel the remaining amount
+    if (BigInt(event.data.remainingMakerAmount) > 0n) {
+        console.log('Remaining amount can be cancelled')
+    }
+})
+```
+
+### Multi-Chain Considerations
+
+```typescript
+// For cross-chain orders, track both chains
+const srcProvider = new ethers.JsonRpcProvider(srcChainRpc)
+const dstProvider = new ethers.JsonRpcProvider(dstChainRpc)
+
+// Cancel on source chain
+const srcCallData = await sdk.buildCancelOrderCallData(orderHash)
+const srcTx = await srcWallet.sendTransaction({
+    to: srcLimitOrderProtocol,
+    data: srcCallData
+})
+
+await srcTx.wait()
+console.log('Source chain cancellation:', srcTx.hash)
+
+// Check destination chain escrow
+const dstEscrowAddress = computeEscrowAddress(orderHash)
+const dstCode = await dstProvider.getCode(dstEscrowAddress)
+
+if (dstCode !== '0x') {
+    console.log('Destination escrow deployed, funds will be refunded after timelock')
+}
+```
+
+## Error Scenarios
+
+### Order Not Found
+
+```typescript
+try {
+    const callData = await sdk.buildCancelOrderCallData(orderHash)
+} catch (error) {
+    if (error.message.includes('Can not get order')) {
+        console.error('Order does not exist or was already processed')
+    }
+}
+```
+
+### Wrong Chain Type
+
+```typescript
+try {
+    const callData = await sdk.buildCancelOrderCallData(orderHash)
+} catch (error) {
+    if (error.message.includes('expected evm src chain')) {
+        console.error('This method only works for EVM source chains')
+        console.log('For Solana, use the Solana-specific cancellation method')
+    }
+}
+```
+
+### Already Filled
+
+```typescript
+try {
+    const tx = await wallet.sendTransaction({
+        to: limitOrderProtocolAddress,
+        data: callData
+    })
+    await tx.wait()
+} catch (error) {
+    if (error.message.includes('execution reverted')) {
+        console.error('Transaction reverted - order may be already filled or cancelled')
+    }
+}
+```
+
+### Insufficient Permissions
+
+```typescript
+try {
+    const tx = await wallet.sendTransaction({
+        to: limitOrderProtocolAddress,
+        data: callData,
+        from: wallet.address
+    })
+    await tx.wait()
+} catch (error) {
+    if (error.message.includes('unauthorized')) {
+        console.error('Only the order maker or authorized canceller can cancel this order')
+    }
+}
+```
+
+## Advanced: Batch Cancellation
+
+```typescript
+// Cancel multiple orders in a single transaction (using multicall)
+import { ethers } from 'ethers'
+
+const orderHashes = ['0x1234...', '0x5678...', '0x9abc...']
+
+// Build call data for each order
+const callDatas = await Promise.all(
+    orderHashes.map(hash => sdk.buildCancelOrderCallData(hash))
+)
+
+// Use multicall contract to batch
+const multicallData = callDatas.map(data => ({
+    target: limitOrderProtocolAddress,
+    callData: data
+}))
+
+const tx = await multicallContract.aggregate(multicallData)
+await tx.wait()
+
+console.log('Batch cancellation complete:', tx.hash)
+```

@@ -1,0 +1,188 @@
+---
+title: getQuote
+description: Get a cross-chain swap quote with pricing and execution details
+---
+
+## Overview
+
+The `getQuote()` method retrieves a quote for a cross-chain swap, including estimated pricing, execution presets, and auction parameters.
+
+## Method Signature
+
+```typescript
+async getQuote(params: QuoteParams): Promise<Quote>
+```
+
+## Parameters
+
+<ParamField path="params" type="QuoteParams" required>
+  Quote request parameters
+  
+  <Expandable title="QuoteParams properties">
+    <ParamField path="srcChainId" type="NetworkEnum" required>
+      Source chain ID (e.g., `NetworkEnum.ETHEREUM`, `NetworkEnum.POLYGON`)
+    </ParamField>
+    
+    <ParamField path="dstChainId" type="NetworkEnum" required>
+      Destination chain ID (e.g., `NetworkEnum.BINANCE`, `NetworkEnum.SOLANA`)
+    </ParamField>
+    
+    <ParamField path="srcTokenAddress" type="string" required>
+      Source token address (use `0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee` for native tokens on EVM)
+    </ParamField>
+    
+    <ParamField path="dstTokenAddress" type="string" required>
+      Destination token address
+    </ParamField>
+    
+    <ParamField path="amount" type="string" required>
+      Amount to swap in token's smallest unit (e.g., wei for ETH)
+    </ParamField>
+    
+    <ParamField path="walletAddress" type="string">
+      User's wallet address (optional for price quotes, required for order creation)
+    </ParamField>
+    
+    <ParamField path="enableEstimate" type="boolean">
+      Set to `true` to enable order creation (generates `quoteId`). Default: `false`
+    </ParamField>
+    
+    <ParamField path="integratorFee" type="IntegratorFeeRequest">
+      Integrator fee configuration for earning fees on swaps
+    </ParamField>
+    
+    <ParamField path="permit" type="string">
+      EIP-2612 permit signature for gasless approvals
+    </ParamField>
+    
+    <ParamField path="isPermit2" type="boolean">
+      Use Permit2 for token approvals. Default: `false`
+    </ParamField>
+    
+    <ParamField path="source" type="string">
+      Integration identifier for analytics
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="Quote" type="Quote">
+  Quote object containing pricing and execution details
+  
+  Key properties:
+  - `srcChainId` - Source chain ID
+  - `dstChainId` - Destination chain ID  
+  - `srcTokenAmount` - Source token amount
+  - `dstMinTokenAmount` - Minimum destination token amount
+  - `dstTokenAmount` - Expected destination token amount
+  - `presets` - Available execution presets (fast, medium, slow)
+  - `recommendedPreset` - Recommended preset for this swap
+  - `quoteId` - Quote ID for order creation (only if `enableEstimate: true`)
+  - `integratorFee` - Integrator fee details (if configured)
+  - `resolverFee` - Resolver fee details
+</ResponseField>
+
+## Examples
+
+### Basic Quote
+
+```typescript
+import { SDK, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({
+  url: 'https://api.1inch.com/fusion-plus',
+  authKey: 'your-auth-key'
+})
+
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.POLYGON,
+  srcTokenAddress: '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT
+  dstTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', // USDT
+  amount: '1000000', // 1 USDT
+  enableEstimate: false
+})
+
+console.log(`Estimated output: ${quote.dstTokenAmount}`)
+console.log(`Minimum output: ${quote.dstMinTokenAmount}`)
+```
+
+### Quote for Order Creation
+
+```typescript
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.POLYGON,
+  dstChainId: NetworkEnum.BINANCE,
+  srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', // Native BNB
+  amount: '10000000', // 10 USDT
+  walletAddress: '0x...', // Required for enableEstimate: true
+  enableEstimate: true // Required to get quoteId for order creation
+})
+
+// Now you can create an order with this quote
+const { hash, order, quoteId } = await sdk.createOrder(quote, {
+  walletAddress: '0x...',
+  hashLock,
+  preset: quote.recommendedPreset,
+  secretHashes
+})
+```
+
+### Quote with Integrator Fee
+
+```typescript
+import { Bps, EvmAddress } from '@1inch/cross-chain-sdk'
+
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.ARBITRUM,
+  srcTokenAddress: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC
+  dstTokenAddress: '0xaf88d065e77c8cc2239327c5edb3a432268e5831', // USDC
+  amount: '1000000', // 1 USDC
+  walletAddress: '0x...',
+  enableEstimate: true,
+  integratorFee: {
+    receiver: EvmAddress.fromString('0xYourFeeReceiver'),
+    value: new Bps(100n) // 1% fee (100 basis points)
+  }
+})
+
+console.log(`Integrator fee: ${quote.integratorFee.value.toString()} bps`)
+console.log(`Fee receiver: ${quote.integratorFee.receiver.toString()}`)
+```
+
+### Native Asset Quote
+
+```typescript
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.POLYGON,
+  srcTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', // Native ETH
+  dstTokenAddress: '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619', // WETH on Polygon
+  amount: '1000000000000000000', // 1 ETH
+  walletAddress: '0x...',
+  enableEstimate: true
+})
+```
+
+## Notes
+
+<Note>
+  Set `enableEstimate: true` and provide `walletAddress` when you intend to create an order. This generates a `quoteId` required for order submission.
+</Note>
+
+<Warning>
+  Quotes are valid for a limited time (typically a few minutes). Create and submit orders promptly after receiving a quote.
+</Warning>
+
+<Info>
+  The `recommendedPreset` field suggests the best execution preset based on market conditions. You can override this when creating the order.
+</Info>
+
+## Related Methods
+
+- [getQuoteWithCustomPreset](/advanced/custom-presets) - Get quote with custom execution parameters
+- [createOrder](/api/orders/create-order) - Create an order from a quote
+- [Quote Response](/api/quotes/quote-response) - Detailed quote response structure

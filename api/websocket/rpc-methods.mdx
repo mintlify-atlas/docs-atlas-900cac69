@@ -1,0 +1,319 @@
+---
+title: RPC Methods
+description: WebSocket RPC method reference
+---
+
+## Overview
+
+The WebSocket API provides RPC methods for querying order data and server status through the `rpc` namespace.
+
+## Available Methods
+
+```typescript
+enum RpcMethod {
+  GetAllowedMethods = 'getAllowedMethods',
+  Ping = 'ping',
+  GetActiveOrders = 'getActiveOrders',
+  GetSecrets = 'getSecrets'
+}
+```
+
+## ping
+
+Health check to verify server connectivity.
+
+### Usage
+
+```typescript
+ws.rpc.ping()
+```
+
+### Response Handler
+
+```typescript
+ws.rpc.onPong((timestamp: string) => {
+  console.log('Pong received at:', timestamp)
+})
+```
+
+### Example
+
+```typescript
+import { WebSocketApi } from '@1inch/cross-chain-sdk'
+
+const ws = new WebSocketApi({
+  url: 'wss://api.1inch.com/fusion-plus/ws',
+  authKey: 'your-auth-key'
+})
+
+// Set up pong handler
+ws.rpc.onPong((timestamp) => {
+  console.log('Server responded:', timestamp)
+})
+
+// Send ping every 30 seconds
+setInterval(() => {
+  ws.rpc.ping()
+}, 30000)
+```
+
+## getAllowedMethods
+
+Retrieves the list of RPC methods supported by the server.
+
+### Usage
+
+```typescript
+ws.rpc.getAllowedMethods()
+```
+
+### Response Handler
+
+```typescript
+ws.rpc.onGetAllowedMethods((methods: RpcMethod[]) => {
+  console.log('Allowed methods:', methods)
+})
+```
+
+### Example
+
+```typescript
+ws.rpc.onGetAllowedMethods((methods) => {
+  console.log('Server supports:', methods.join(', '))
+  
+  // Check if specific method is supported
+  if (methods.includes(RpcMethod.GetActiveOrders)) {
+    console.log('GetActiveOrders is supported')
+  }
+})
+
+ws.rpc.getAllowedMethods()
+```
+
+## getActiveOrders
+
+Retrieves currently active orders.
+
+### Usage
+
+```typescript
+ws.rpc.getActiveOrders()
+```
+
+### Response Handler
+
+```typescript
+ws.rpc.onGetActiveOrders((response: PaginationOutput<ActiveOrder>) => {
+  console.log(`Total: ${response.meta.totalItems}`)
+  response.items.forEach(order => {
+    console.log(`Order: ${order.orderHash}`)
+  })
+})
+```
+
+### Response Structure
+
+<ResponseField name="PaginationOutput" type="object">
+  <Expandable title="properties">
+    <ResponseField name="items" type="ActiveOrder[]">
+      Array of active orders
+      
+      <Expandable title="ActiveOrder structure">
+        <ResponseField name="orderHash" type="string">
+          Order hash
+        </ResponseField>
+        
+        <ResponseField name="srcChainId" type="NetworkEnum">
+          Source chain ID
+        </ResponseField>
+        
+        <ResponseField name="dstChainId" type="NetworkEnum">
+          Destination chain ID
+        </ResponseField>
+        
+        <ResponseField name="order" type="LimitOrderV4Struct">
+          Order structure
+        </ResponseField>
+        
+        <ResponseField name="signature" type="string">
+          Order signature
+        </ResponseField>
+        
+        <ResponseField name="extension" type="string">
+          Order extension data
+        </ResponseField>
+        
+        <ResponseField name="quoteId" type="string">
+          Quote ID
+        </ResponseField>
+        
+        <ResponseField name="createDateTime" type="string">
+          Order creation timestamp
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="meta" type="object">
+      Pagination metadata
+      
+      <Expandable title="properties">
+        <ResponseField name="totalItems" type="number">
+          Total number of active orders
+        </ResponseField>
+        
+        <ResponseField name="itemCount" type="number">
+          Number of items in current page
+        </ResponseField>
+        
+        <ResponseField name="itemsPerPage" type="number">
+          Items per page
+        </ResponseField>
+        
+        <ResponseField name="totalPages" type="number">
+          Total number of pages
+        </ResponseField>
+        
+        <ResponseField name="currentPage" type="number">
+          Current page number
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```typescript
+ws.rpc.onGetActiveOrders((response) => {
+  console.log(`Active orders: ${response.meta.totalItems}`)
+  console.log(`Current page: ${response.meta.currentPage}/${response.meta.totalPages}`)
+  
+  response.items.forEach(order => {
+    console.log(`\nOrder: ${order.orderHash}`)
+    console.log(`  From: ${order.srcChainId} → ${order.dstChainId}`)
+    console.log(`  Created: ${order.createDateTime}`)
+    console.log(`  Quote: ${order.quoteId}`)
+  })
+})
+
+ws.rpc.getActiveOrders()
+```
+
+## getSecrets
+
+Retrieves published secrets for an order.
+
+### Usage
+
+```typescript
+// Note: This method may require order hash parameter
+ws.rpc.getSecrets()
+```
+
+## Complete Example
+
+```typescript
+import { WebSocketApi, RpcMethod } from '@1inch/cross-chain-sdk'
+
+const ws = new WebSocketApi({
+  url: 'wss://api.1inch.com/fusion-plus/ws',
+  authKey: 'your-auth-key'
+})
+
+ws.onOpen(() => {
+  console.log('Connected')
+  
+  // Check server capabilities
+  ws.rpc.getAllowedMethods()
+  
+  // Health check
+  ws.rpc.ping()
+  
+  // Get active orders
+  ws.rpc.getActiveOrders()
+})
+
+// Handle responses
+ws.rpc.onGetAllowedMethods((methods) => {
+  console.log('Server supports:', methods)
+})
+
+ws.rpc.onPong((timestamp) => {
+  console.log('Pong:', timestamp)
+})
+
+ws.rpc.onGetActiveOrders((response) => {
+  console.log(`Found ${response.items.length} active orders`)
+  
+  response.items.forEach((order, idx) => {
+    console.log(`${idx + 1}. ${order.orderHash}`)
+  })
+})
+```
+
+## Periodic Monitoring
+
+```typescript
+const ws = new WebSocketApi({
+  url: 'wss://api.1inch.com/fusion-plus/ws',
+  authKey: 'your-auth-key'
+})
+
+// Ping server every 30 seconds
+setInterval(() => {
+  ws.rpc.ping()
+}, 30000)
+
+// Refresh active orders every minute
+setInterval(() => {
+  ws.rpc.getActiveOrders()
+}, 60000)
+
+// Handle pong
+ws.rpc.onPong(() => {
+  console.log('Server is alive')
+})
+
+// Handle active orders
+ws.rpc.onGetActiveOrders((response) => {
+  console.log(`Active orders: ${response.meta.totalItems}`)
+})
+```
+
+## Error Handling
+
+```typescript
+ws.onError((error) => {
+  console.error('WebSocket error:', error)
+})
+
+ws.onClose(() => {
+  console.log('Connection closed')
+})
+
+// Request methods only when connected
+ws.onOpen(() => {
+  ws.rpc.ping()
+  ws.rpc.getActiveOrders()
+})
+```
+
+## Notes
+
+<Note>
+RPC methods require an active WebSocket connection. Set up response handlers before sending requests.
+</Note>
+
+<Info>
+Responses are asynchronous. Use the corresponding `on*` handler to receive the response.
+</Info>
+
+<Warning>
+Not all RPC methods may be available on all servers. Use `getAllowedMethods()` to check capabilities.
+</Warning>
+
+## Related
+
+- [WebSocketApi](/api/websocket/websocket-api) - WebSocket API reference
+- [Order Events](/api/websocket/order-events) - Order event types
+- [Order Tracking](/guides/order-tracking) - Order monitoring guide

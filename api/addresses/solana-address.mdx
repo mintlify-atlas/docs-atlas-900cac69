@@ -1,0 +1,364 @@
+---
+title: SolanaAddress
+description: Solana address wrapper class for cross-chain operations
+---
+
+## Overview
+
+The `SolanaAddress` class provides a type-safe wrapper for Solana addresses (base58-encoded public keys) with utilities for conversion between Solana and EVM address formats.
+
+## Class Definition
+
+```typescript
+class SolanaAddress {
+  static readonly ZERO: SolanaAddress
+  static readonly NATIVE: SolanaAddress
+  static readonly WRAPPED_NATIVE: SolanaAddress
+  static readonly TOKEN_PROGRAM_ID: SolanaAddress
+  static readonly TOKEN_2022_PROGRAM_ID: SolanaAddress
+  static readonly ASSOCIATED_TOKEN_PROGRAM_ID: SolanaAddress
+  static readonly SYSTEM_PROGRAM_ID: SolanaAddress
+  static readonly SYSVAR_RENT_ID: SolanaAddress
+  
+  constructor(value: string)
+  
+  static fromString(str: string): SolanaAddress
+  static fromBigInt(val: bigint): SolanaAddress
+  static fromBuffer(buf: Uint8Array): SolanaAddress
+  static fromParts(parts: [AddressComplement, EvmAddress]): SolanaAddress
+  static fromUnknown(val: unknown): SolanaAddress
+  
+  toString(): string
+  toBase58(): string
+  toBuffer(): Uint8Array
+  toBigint(): bigint
+  toPublicKey(): PublicKey
+  splitToParts(): [AddressComplement, EvmAddress]
+  isZero(): boolean
+  isNative(): boolean
+  eq(other: SolanaAddress): boolean
+}
+```
+
+## Constants
+
+### NATIVE
+
+Native SOL address representation (`SoNative11111111111111111111111111111111111`)
+
+```typescript
+const nativeSOL = SolanaAddress.NATIVE
+console.log(nativeSOL.toString())
+```
+
+<Info>
+Use `SolanaAddress.NATIVE` for native SOL in quote requests.
+</Info>
+
+### WRAPPED_NATIVE
+
+Wrapped SOL (wSOL) address (`So11111111111111111111111111111111111111112`)
+
+```typescript
+const wSOL = SolanaAddress.WRAPPED_NATIVE
+```
+
+### TOKEN_PROGRAM_ID
+
+SPL Token program address (`TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`)
+
+```typescript
+const tokenProgram = SolanaAddress.TOKEN_PROGRAM_ID
+```
+
+### TOKEN_2022_PROGRAM_ID
+
+Token-2022 (Token Extensions) program address
+
+```typescript
+const token2022Program = SolanaAddress.TOKEN_2022_PROGRAM_ID
+```
+
+### ASSOCIATED_TOKEN_PROGRAM_ID
+
+Associated Token Account program address
+
+```typescript
+const ataProgram = SolanaAddress.ASSOCIATED_TOKEN_PROGRAM_ID
+```
+
+### SYSTEM_PROGRAM_ID
+
+Solana System Program address
+
+```typescript
+const systemProgram = SolanaAddress.SYSTEM_PROGRAM_ID
+```
+
+## Static Methods
+
+### fromString
+
+Creates a `SolanaAddress` from a base58 string.
+
+```typescript
+static fromString(str: string): SolanaAddress
+```
+
+**Example:**
+```typescript
+const address = SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+```
+
+### fromBigInt
+
+Creates a `SolanaAddress` from a bigint.
+
+```typescript
+static fromBigInt(val: bigint): SolanaAddress
+```
+
+**Example:**
+```typescript
+const address = SolanaAddress.fromBigInt(123456789012345678901234567890n)
+```
+
+### fromBuffer
+
+Creates a `SolanaAddress` from a Uint8Array (32 bytes).
+
+```typescript
+static fromBuffer(buf: Uint8Array): SolanaAddress
+```
+
+**Example:**
+```typescript
+const buffer = new Uint8Array(32) // 32-byte public key
+const address = SolanaAddress.fromBuffer(buffer)
+```
+
+### fromParts
+
+Creates a `SolanaAddress` from an address complement and EVM address.
+
+```typescript
+static fromParts(parts: [AddressComplement, EvmAddress]): SolanaAddress
+```
+
+This is useful when reconstructing Solana addresses from cross-chain order data.
+
+### fromUnknown
+
+Creates a `SolanaAddress` from various input types.
+
+```typescript
+static fromUnknown(val: unknown): SolanaAddress
+```
+
+Supports:
+- Base58 strings
+- BigInt strings
+- BigInt values
+- Uint8Array buffers
+
+## Instance Methods
+
+### toString / toBase58
+
+Returns the base58-encoded address string.
+
+```typescript
+toString(): string
+toBase58(): string
+```
+
+**Example:**
+```typescript
+const address = SolanaAddress.NATIVE
+console.log(address.toString()) // SoNative11111111111111111111111111111111111
+```
+
+### toBigint
+
+Converts the address to a bigint.
+
+```typescript
+toBigint(): bigint
+```
+
+**Example:**
+```typescript
+const address = SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+console.log(address.toBigint())
+```
+
+### toBuffer
+
+Returns the address as a Uint8Array (32 bytes).
+
+```typescript
+toBuffer(): Uint8Array
+```
+
+### toPublicKey
+
+Converts to an Anchor/web3.js PublicKey object.
+
+```typescript
+toPublicKey(): PublicKey
+```
+
+**Example:**
+```typescript
+import { web3 } from '@coral-xyz/anchor'
+
+const address = SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+const publicKey: web3.PublicKey = address.toPublicKey()
+```
+
+### splitToParts
+
+Splits the Solana address into parts for cross-chain representation.
+
+```typescript
+splitToParts(): [AddressComplement, EvmAddress]
+```
+
+Returns a tuple of:
+1. `AddressComplement` - High bits (96 bits)
+2. `EvmAddress` - Low bits (160 bits)
+
+This allows Solana addresses to be represented in EVM-compatible formats.
+
+**Example:**
+```typescript
+const address = SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+const [complement, evmPart] = address.splitToParts()
+
+console.log(complement.toString())
+console.log(evmPart.toString())
+```
+
+### isZero
+
+Checks if the address is the zero address.
+
+```typescript
+isZero(): boolean
+```
+
+### isNative
+
+Checks if the address represents native SOL.
+
+```typescript
+isNative(): boolean
+```
+
+**Example:**
+```typescript
+const native = SolanaAddress.NATIVE
+console.log(native.isNative()) // true
+
+const usdt = SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+console.log(usdt.isNative()) // false
+```
+
+### eq
+
+Compares two addresses for equality.
+
+```typescript
+eq(other: SolanaAddress): boolean
+```
+
+## Usage Examples
+
+### In Quote Requests
+
+```typescript
+import { SDK, SolanaAddress, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({ /* config */ })
+
+// Solana to EVM swap
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.SOLANA,
+  dstChainId: NetworkEnum.ETHEREUM,
+  srcTokenAddress: SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB').toString(), // USDT
+  dstTokenAddress: '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT
+  amount: '1000000', // 1 USDT
+  walletAddress: maker, // Solana address (base58)
+  enableEstimate: true
+})
+```
+
+### Creating Solana Orders
+
+```typescript
+import { EvmAddress } from '@1inch/cross-chain-sdk'
+
+// Create order from quote
+const order = quote.createSolanaOrder({
+  hashLock,
+  receiver: EvmAddress.fromString('0xReceiverAddressOnEVM'), // EVM destination
+  preset: quote.recommendedPreset
+})
+```
+
+### Working with Token Addresses
+
+```typescript
+// USDT on Solana
+const usdtSolana = SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+
+// USDC on Solana  
+const usdcSolana = SolanaAddress.fromString('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
+
+// Native SOL
+const sol = SolanaAddress.NATIVE
+
+console.log(`USDT: ${usdtSolana.toString()}`)
+console.log(`USDC: ${usdcSolana.toString()}`)
+console.log(`SOL: ${sol.toString()}`)
+```
+
+### Integration with Anchor
+
+```typescript
+import { web3 } from '@coral-xyz/anchor'
+
+const solanaAddress = SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+
+// Convert to PublicKey for Anchor usage
+const publicKey = solanaAddress.toPublicKey()
+
+// Use in Anchor instructions
+const ix = await program.methods
+  .someInstruction()
+  .accounts({
+    tokenMint: publicKey,
+    // ... other accounts
+  })
+  .instruction()
+```
+
+## Cross-Chain Address Conversion
+
+When bridging between Solana and EVM:
+
+```typescript
+// Split Solana address for EVM representation
+const solAddress = SolanaAddress.fromString('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+const [complement, evmPart] = solAddress.splitToParts()
+
+// Reconstruct from parts
+const reconstructed = SolanaAddress.fromParts([complement, evmPart])
+console.log(reconstructed.eq(solAddress)) // true
+```
+
+## Related
+
+- [EvmAddress](/api/addresses/evm-address) - EVM address wrapper
+- [Solana to EVM Guide](/guides/solana-to-evm) - Cross-chain Solana swaps
+- [EVM to Solana Guide](/guides/evm-to-solana) - Reverse direction

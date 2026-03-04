@@ -1,0 +1,408 @@
+---
+title: Order Events
+description: WebSocket order event types and structures
+---
+
+## Event Types
+
+All order events follow this structure:
+
+```typescript
+type OrderEventType = {
+  event: EventType
+  data: EventData
+}
+
+enum EventType {
+  OrderCreated = 'order_created',
+  OrderInvalid = 'order_invalid',
+  OrderBalanceChange = 'order_balance_change',
+  OrderAllowanceChange = 'order_allowance_change',
+  OrderFilled = 'order_filled',
+  OrderFilledPartially = 'order_filled_partially',
+  OrderCancelled = 'order_cancelled',
+  OrderSecretShared = 'secret_shared'
+}
+```
+
+## order_created
+
+Emitted when a new order is created and broadcasted.
+
+### Event Structure
+
+```typescript
+{
+  event: 'order_created',
+  data: {
+    srcChainId: NetworkEnum
+    dstChainId: NetworkEnum
+    orderHash: string
+    order: LimitOrderV4Struct
+    extension: string
+    signature: string
+    isMakerContract: boolean
+    quoteId: string
+    merkleLeaves: string[]
+    secretHashes: string[]
+  }
+}
+```
+
+### Fields
+
+<ResponseField name="srcChainId" type="NetworkEnum">
+  Source chain ID
+</ResponseField>
+
+<ResponseField name="dstChainId" type="NetworkEnum">
+  Destination chain ID
+</ResponseField>
+
+<ResponseField name="orderHash" type="string">
+  Unique order hash
+</ResponseField>
+
+<ResponseField name="order" type="LimitOrderV4Struct">
+  Order structure (maker, receiver, maker asset, taker asset, maker traits, etc.)
+</ResponseField>
+
+<ResponseField name="extension" type="string">
+  Encoded order extension data
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Order signature
+</ResponseField>
+
+<ResponseField name="isMakerContract" type="boolean">
+  Whether maker is a smart contract
+</ResponseField>
+
+<ResponseField name="quoteId" type="string">
+  Quote ID used for order creation
+</ResponseField>
+
+<ResponseField name="merkleLeaves" type="string[]">
+  Merkle leaves for multi-fill orders (empty for single fill)
+</ResponseField>
+
+<ResponseField name="secretHashes" type="string[]">
+  Hashes of secrets (empty array if only one secret)
+</ResponseField>
+
+### Example
+
+```typescript
+ws.order.onOrderCreated((data) => {
+  console.log(`New order created: ${data.orderHash}`)
+  console.log(`  Quote: ${data.quoteId}`)
+  console.log(`  From: ${data.srcChainId} → ${data.dstChainId}`)
+  console.log(`  Secrets: ${data.secretHashes.length || 1}`)
+})
+```
+
+## order_filled
+
+Emitted when an order is completely filled.
+
+### Event Structure
+
+```typescript
+{
+  event: 'order_filled',
+  data: {
+    orderHash: string
+  }
+}
+```
+
+### Example
+
+```typescript
+ws.order.onOrderFilled((data) => {
+  console.log(`Order filled: ${data.orderHash}`)
+  // Order is complete, swap executed successfully
+})
+```
+
+## order_filled_partially
+
+Emitted when an order is partially filled.
+
+### Event Structure
+
+```typescript
+{
+  event: 'order_filled_partially',
+  data: {
+    orderHash: string
+    remainingMakerAmount: string
+  }
+}
+```
+
+### Fields
+
+<ResponseField name="orderHash" type="string">
+  Order hash
+</ResponseField>
+
+<ResponseField name="remainingMakerAmount" type="string">
+  Remaining amount to be filled (in wei/smallest unit)
+</ResponseField>
+
+### Example
+
+```typescript
+ws.order.onOrderFilledPartially((data) => {
+  console.log(`Partial fill: ${data.orderHash}`)
+  console.log(`  Remaining: ${data.remainingMakerAmount}`)
+  
+  // Calculate fill percentage
+  const filled = BigInt(originalAmount) - BigInt(data.remainingMakerAmount)
+  const percentage = (Number(filled) / Number(originalAmount)) * 100
+  console.log(`  ${percentage.toFixed(2)}% filled`)
+})
+```
+
+## order_cancelled
+
+Emitted when an order is cancelled.
+
+### Event Structure
+
+```typescript
+{
+  event: 'order_cancelled',
+  data: {
+    orderHash: string
+    remainingMakerAmount: string
+  }
+}
+```
+
+### Fields
+
+<ResponseField name="orderHash" type="string">
+  Order hash
+</ResponseField>
+
+<ResponseField name="remainingMakerAmount" type="string">
+  Amount that was not filled before cancellation
+</ResponseField>
+
+### Example
+
+```typescript
+ws.order.onOrderCancelled((data) => {
+  console.log(`Order cancelled: ${data.orderHash}`)
+  console.log(`  Unfilled amount: ${data.remainingMakerAmount}`)
+})
+```
+
+## order_invalid
+
+Emitted when an order becomes invalid (e.g., insufficient balance or allowance).
+
+### Event Structure
+
+```typescript
+{
+  event: 'order_invalid',
+  data: {
+    orderHash: string
+  }
+}
+```
+
+### Example
+
+```typescript
+ws.order.onOrderInvalid((data) => {
+  console.log(`Order invalid: ${data.orderHash}`)
+  // Check balance and allowance
+})
+```
+
+## order_balance_change
+
+Emitted when the maker's token balance changes.
+
+### Event Structure
+
+```typescript
+{
+  event: 'order_balance_change',
+  data: {
+    orderHash: string
+    remainingMakerAmount: string
+    balance: string
+  }
+}
+```
+
+### Fields
+
+<ResponseField name="orderHash" type="string">
+  Order hash
+</ResponseField>
+
+<ResponseField name="remainingMakerAmount" type="string">
+  Remaining amount to fill
+</ResponseField>
+
+<ResponseField name="balance" type="string">
+  Current maker token balance
+</ResponseField>
+
+### Example
+
+```typescript
+ws.order.onOrderBalanceChange((data) => {
+  console.log(`Balance changed for ${data.orderHash}`)
+  console.log(`  Balance: ${data.balance}`)
+  console.log(`  Remaining: ${data.remainingMakerAmount}`)
+})
+```
+
+## order_allowance_change
+
+Emitted when the maker's token allowance changes.
+
+### Event Structure
+
+```typescript
+{
+  event: 'order_allowance_change',
+  data: {
+    orderHash: string
+    remainingMakerAmount: string
+    allowance: string
+  }
+}
+```
+
+### Fields
+
+<ResponseField name="orderHash" type="string">
+  Order hash
+</ResponseField>
+
+<ResponseField name="remainingMakerAmount" type="string">
+  Remaining amount to fill
+</ResponseField>
+
+<ResponseField name="allowance" type="string">
+  Current token allowance for Limit Order Protocol
+</ResponseField>
+
+### Example
+
+```typescript
+ws.order.onOrderAllowanceChange((data) => {
+  console.log(`Allowance changed for ${data.orderHash}`)
+  console.log(`  Allowance: ${data.allowance}`)
+  console.log(`  Remaining: ${data.remainingMakerAmount}`)
+})
+```
+
+## secret_shared
+
+Emitted when a secret is shared with the relayer.
+
+### Event Structure
+
+```typescript
+{
+  event: 'secret_shared',
+  data: {
+    idx: number
+    secret: string
+    srcImmutables: Immutables
+    dstImmutables: Immutables
+  }
+}
+```
+
+### Fields
+
+<ResponseField name="idx" type="number">
+  Index of the shared secret
+</ResponseField>
+
+<ResponseField name="secret" type="string">
+  The revealed secret
+</ResponseField>
+
+<ResponseField name="srcImmutables" type="Immutables">
+  Source escrow immutables
+</ResponseField>
+
+<ResponseField name="dstImmutables" type="Immutables">
+  Destination escrow immutables
+</ResponseField>
+
+### Example
+
+```typescript
+ws.order.onOrderSecretShared((data) => {
+  console.log(`Secret ${data.idx} shared`)
+  console.log(`  Secret: ${data.secret}`)
+})
+```
+
+## Subscribing to All Events
+
+```typescript
+ws.order.onOrder((event) => {
+  console.log(`Event: ${event.event}`)
+  
+  switch (event.event) {
+    case EventType.OrderCreated:
+      // Handle order_created
+      break
+    case EventType.OrderFilled:
+      // Handle order_filled
+      break
+    case EventType.OrderFilledPartially:
+      // Handle order_filled_partially
+      break
+    case EventType.OrderCancelled:
+      // Handle order_cancelled
+      break
+    case EventType.OrderInvalid:
+      // Handle order_invalid
+      break
+    case EventType.OrderBalanceChange:
+      // Handle order_balance_change
+      break
+    case EventType.OrderAllowanceChange:
+      // Handle order_allowance_change
+      break
+    case EventType.OrderSecretShared:
+      // Handle secret_shared
+      break
+  }
+})
+```
+
+## Event Filtering
+
+Filter events for specific orders:
+
+```typescript
+const myOrderHash = '0x...'
+
+ws.order.onOrder((event) => {
+  if ('orderHash' in event.data && event.data.orderHash === myOrderHash) {
+    console.log(`Event for my order:`, event.event)
+  }
+})
+```
+
+## Related
+
+- [WebSocketApi](/api/websocket/websocket-api) - WebSocket API reference
+- [RPC Methods](/api/websocket/rpc-methods) - RPC methods reference
+- [Order Tracking](/guides/order-tracking) - Order monitoring guide

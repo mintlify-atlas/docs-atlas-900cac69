@@ -1,0 +1,527 @@
+---
+title: 'Event Decoding'
+description: 'Parse and decode escrow contract events from blockchain logs'
+---
+
+The SDK provides utilities to decode events emitted by escrow contracts, allowing you to track cross-chain swap progress on-chain.
+
+## Overview
+
+Escrow contracts emit events at key stages of the swap lifecycle:
+- **SrcEscrowCreated**: When source chain escrow is deployed
+- **DstEscrowCreated**: When destination chain escrow is deployed
+- **EscrowWithdrawal**: When funds are withdrawn with secret
+- **EscrowCancelled**: When an order is cancelled
+- **FundsRescued**: When funds are rescued after timelock expiry
+
+## Event Classes
+
+### SrcEscrowCreated
+
+Emitted when a source chain escrow contract is created.
+
+**Event Topic:**
+```typescript
+SrcEscrowCreatedEvent.TOPIC
+// '0x1140dcf80f027f65ebd1c2e98c33e3ebf7ef025d944a079256037cd55271bf98'
+```
+
+**Decoding:**
+
+```typescript
+import { SrcEscrowCreatedEvent } from '@1inch/cross-chain-sdk'
+
+// From Web3/Ethers log
+const log = await provider.getLogs({
+    topics: [SrcEscrowCreatedEvent.TOPIC],
+    fromBlock: 'latest'
+})
+
+// Decode the event
+const event = SrcEscrowCreatedEvent.fromData(log[0].data)
+
+console.log('Source Immutables:', {
+    orderHash: event.srcImmutables.orderHash,
+    maker: event.srcImmutables.maker.toString(),
+    taker: event.srcImmutables.taker.toString(),
+    token: event.srcImmutables.token.toString(),
+    amount: event.srcImmutables.amount.toString(),
+    safetyDeposit: event.srcImmutables.safetyDeposit.toString(),
+    hashlock: event.srcImmutables.hashLock.toString()
+})
+
+console.log('Destination Complement:', {
+    maker: event.dstImmutablesComplement.maker.toString(),
+    token: event.dstImmutablesComplement.token.toString(),
+    amount: event.dstImmutablesComplement.amount.toString(),
+    chainId: event.dstImmutablesComplement.chainId
+})
+```
+
+**Event Structure:**
+
+```typescript
+class SrcEscrowCreatedEvent {
+    srcImmutables: Immutables<EvmAddress>
+    dstImmutablesComplement: DstImmutablesComplement<AddressLike>
+}
+```
+
+### DstEscrowCreated
+
+Emitted when a destination chain escrow contract is created.
+
+**Event Topic:**
+```typescript
+DstEscrowCreatedEvent.TOPIC
+// '0xc30e111dcc74fddc2c3a4d98ffb97adec4485c0a687946bf5b22c2a99c7ff96d'
+```
+
+**Decoding:**
+
+```typescript
+import { DstEscrowCreatedEvent } from '@1inch/cross-chain-sdk'
+
+const log = await provider.getLogs({
+    topics: [DstEscrowCreatedEvent.TOPIC],
+    fromBlock: 'latest'
+})
+
+const event = DstEscrowCreatedEvent.fromData(log[0].data)
+
+console.log('Destination Escrow Created:', {
+    escrow: event.escrow.toString(),
+    hashlock: event.hashlock,
+    taker: event.taker.toString()
+})
+```
+
+**Event Structure:**
+
+```typescript
+class DstEscrowCreatedEvent {
+    escrow: EvmAddress
+    hashlock: string
+    taker: EvmAddress
+}
+```
+
+### EscrowWithdrawal
+
+Emitted when funds are withdrawn from an escrow (reveals the secret).
+
+**Event Topic:**
+```typescript
+EscrowWithdrawalEvent.TOPIC
+// '0xe346f5c97a360db5188bfa5d3ec5f0583abde420c6ba4d08b6cfe61addc17105'
+```
+
+**Decoding:**
+
+```typescript
+import { EscrowWithdrawalEvent } from '@1inch/cross-chain-sdk'
+
+const log = await provider.getLogs({
+    topics: [EscrowWithdrawalEvent.TOPIC],
+    fromBlock: 'latest'
+})
+
+const event = EscrowWithdrawalEvent.fromData(log[0].data)
+
+console.log('Secret revealed:', event.secret)
+```
+
+**Event Structure:**
+
+```typescript
+class EscrowWithdrawalEvent {
+    secret: string
+}
+```
+
+### EscrowCancelled
+
+Emitted when an escrow is cancelled.
+
+**Event Topic:**
+```typescript
+EscrowCancelledEvent.TOPIC
+// '0x6e3be9294e58d10b9c8053cfd5e09871b67e442fe394d6b0870d336b9df984a9'
+```
+
+**Event Structure:**
+
+```typescript
+class EscrowCancelledEvent {
+    escrowAddress: EvmAddress
+}
+```
+
+### FundsRescued
+
+Emitted when funds are rescued after timelock expiry.
+
+**Event Topic:**
+```typescript
+FundsRescuedEvent.TOPIC
+// '0xc4474c2790e13695f6d2b6f1d8e164290b55370f87a542fd7711abe0a1bf40ac'
+```
+
+## Immutables Structure
+
+The `Immutables` class contains all escrow parameters:
+
+```typescript
+class Immutables<A extends AddressLike = AddressLike> {
+    orderHash: Buffer
+    hashLock: HashLock
+    maker: A
+    taker: A
+    token: A
+    amount: bigint
+    safetyDeposit: bigint
+    timeLocks: TimeLocks
+    fees?: ImmutableFees  // v2.0+ only
+}
+```
+
+### Accessing Immutables Data
+
+```typescript
+const event = SrcEscrowCreatedEvent.fromData(log.data)
+const immutables = event.srcImmutables
+
+// Get order hash
+const orderHash = immutables.orderHash.toString('hex')
+
+// Get addresses
+const makerAddress = immutables.maker.toString()
+const tokenAddress = immutables.token.toString()
+
+// Get amounts
+const amount = immutables.amount // bigint
+const safetyDeposit = immutables.safetyDeposit // bigint
+
+// Get hash lock
+const hashlock = immutables.hashLock.toString()
+
+// Get time locks
+const timelocks = immutables.timeLocks.build() // bigint
+
+// Get fees (v2.0+)
+if (immutables.fees) {
+    const resolverFee = immutables.fees.resolverFeeAmount
+    const integratorFee = immutables.fees.integratorFeeAmount
+}
+```
+
+### Computing Immutables Hash
+
+```typescript
+const hash = immutables.hash()
+// Returns keccak256 hash matching contract's ImmutablesLib.hash()
+```
+
+### JSON Serialization
+
+```typescript
+const json = immutables.toJSON()
+console.log(json)
+// {
+//   orderHash: '0x...',
+//   hashlock: '0x...',
+//   maker: '0x...',
+//   taker: '0x...',
+//   token: '0x...',
+//   amount: '1000000000000000000',
+//   safetyDeposit: '100000000000000000',
+//   timelocks: '...',
+//   parameters: '0x...' // Encoded fees
+// }
+```
+
+## Fee Parameters (v2.0+)
+
+Starting from v2.0, the `Immutables` structure includes fee parameters.
+
+### ImmutableFees Structure
+
+```typescript
+class ImmutableFees {
+    resolverFeeAmount: bigint
+    integratorFeeAmount: bigint
+    resolverFeeRecipient: EvmAddress
+    integratorFeeRecipient: EvmAddress
+}
+```
+
+### Decoding Fee Parameters
+
+```typescript
+import { ImmutableFees } from '@1inch/cross-chain-sdk'
+
+// From event
+const event = SrcEscrowCreatedEvent.fromData(log.data)
+const fees = event.dstImmutablesComplement.fees
+
+if (fees) {
+    console.log('Fee Parameters:', {
+        resolverFeeAmount: fees.resolverFeeAmount.toString(),
+        integratorFeeAmount: fees.integratorFeeAmount.toString(),
+        resolverFeeRecipient: fees.resolverFeeRecipient.toString(),
+        integratorFeeRecipient: fees.integratorFeeRecipient.toString()
+    })
+}
+
+// From encoded bytes
+const feeBytes = '0x...' // From Immutables.parameters field
+const decodedFees = ImmutableFees.decode(feeBytes)
+
+console.log('Decoded fees:', decodedFees)
+```
+
+### Fee Encoding
+
+```typescript
+const fees = new ImmutableFees(
+    5556n,  // resolverFeeAmount
+    231n,   // integratorFeeAmount
+    EvmAddress.fromString('0x5375ea61702dc3f421dd3c0c63c6b32101102e22'),
+    EvmAddress.fromString('0x834704408a83c220ac4a85bf5c7c42307c4be4a5')
+)
+
+const encoded = fees.encode()
+// Returns 128 bytes (256 hex chars + 0x prefix)
+```
+
+### Zero Fees
+
+```typescript
+const zeroFees = ImmutableFees.ZERO
+
+// Check if fees are zero
+if (fees.isZero()) {
+    console.log('No fees configured')
+}
+```
+
+## Practical Examples
+
+### Tracking Order Progress
+
+```typescript
+import { 
+    SrcEscrowCreatedEvent, 
+    DstEscrowCreatedEvent, 
+    EscrowWithdrawalEvent 
+} from '@1inch/cross-chain-sdk'
+import { ethers } from 'ethers'
+
+const provider = new ethers.JsonRpcProvider('https://rpc.example.com')
+
+// Track source escrow creation
+const srcLogs = await provider.getLogs({
+    address: escrowFactoryAddress,
+    topics: [SrcEscrowCreatedEvent.TOPIC],
+    fromBlock: startBlock,
+    toBlock: 'latest'
+})
+
+for (const log of srcLogs) {
+    const event = SrcEscrowCreatedEvent.fromData(log.data)
+    console.log(`Source escrow created for order ${event.srcImmutables.orderHash.toString('hex')}`)
+}
+
+// Track destination escrow creation
+const dstLogs = await provider.getLogs({
+    address: escrowFactoryAddress,
+    topics: [DstEscrowCreatedEvent.TOPIC],
+    fromBlock: startBlock,
+    toBlock: 'latest'
+})
+
+for (const log of dstLogs) {
+    const event = DstEscrowCreatedEvent.fromData(log.data)
+    console.log(`Destination escrow created: ${event.escrow.toString()}`)
+}
+
+// Track withdrawals (secret reveals)
+const withdrawalLogs = await provider.getLogs({
+    topics: [EscrowWithdrawalEvent.TOPIC],
+    fromBlock: startBlock,
+    toBlock: 'latest'
+})
+
+for (const log of withdrawalLogs) {
+    const event = EscrowWithdrawalEvent.fromData(log.data)
+    console.log(`Secret revealed: ${event.secret}`)
+}
+```
+
+### Computing Escrow Address
+
+```typescript
+import { create2Address } from '@1inch/cross-chain-sdk'
+
+const event = SrcEscrowCreatedEvent.fromData(log.data)
+const immutables = event.srcImmutables
+
+// Compute CREATE2 address
+const escrowAddress = create2Address(
+    escrowFactoryAddress,
+    immutables.hash(),
+    implementationCodeHash
+)
+
+console.log('Predicted escrow address:', escrowAddress)
+```
+
+### Monitoring Fee Distribution
+
+```typescript
+const event = SrcEscrowCreatedEvent.fromData(log.data)
+const fees = event.dstImmutablesComplement.fees
+
+if (fees && !fees.isZero()) {
+    const totalFees = fees.resolverFeeAmount + fees.integratorFeeAmount
+    const dstAmount = event.dstImmutablesComplement.amount
+    
+    console.log('Fee Distribution:', {
+        totalOutput: dstAmount.toString(),
+        resolverFee: fees.resolverFeeAmount.toString(),
+        integratorFee: fees.integratorFeeAmount.toString(),
+        totalFees: totalFees.toString(),
+        netAmount: (dstAmount - totalFees).toString(),
+        feePercentage: ((totalFees * 10000n) / dstAmount).toString() + ' bps'
+    })
+}
+```
+
+### Filtering by Order Hash
+
+```typescript
+const targetOrderHash = '0x1234...'
+
+const logs = await provider.getLogs({
+    address: escrowFactoryAddress,
+    topics: [SrcEscrowCreatedEvent.TOPIC],
+    fromBlock: startBlock,
+    toBlock: 'latest'
+})
+
+for (const log of logs) {
+    const event = SrcEscrowCreatedEvent.fromData(log.data)
+    const orderHash = event.srcImmutables.orderHash.toString('hex')
+    
+    if (orderHash === targetOrderHash.slice(2)) {
+        console.log('Found escrow for order:', orderHash)
+        console.log('Source chain amount:', event.srcImmutables.amount.toString())
+        console.log('Destination chain amount:', event.dstImmutablesComplement.amount.toString())
+        break
+    }
+}
+```
+
+## Version Compatibility
+
+### v1.1 vs v2.0 Events
+
+The `SrcEscrowCreated` event topic changed in v2.0:
+
+| Version | Topic Hash                                                           |
+|---------|----------------------------------------------------------------------|
+| v1.1    | `0x0e534c62f0afd2fa0f0fa71198e8aa2d549f24daf2bb47de0d5486c7ce9288ca` |
+| v2.0    | `0x1140dcf80f027f65ebd1c2e98c33e3ebf7ef025d944a079256037cd55271bf98` |
+
+**Listening to both versions:**
+
+```typescript
+const V1_TOPIC = '0x0e534c62f0afd2fa0f0fa71198e8aa2d549f24daf2bb47de0d5486c7ce9288ca'
+const V2_TOPIC = '0x1140dcf80f027f65ebd1c2e98c33e3ebf7ef025d944a079256037cd55271bf98'
+
+const logs = await provider.getLogs({
+    address: escrowFactoryAddress,
+    topics: [[V1_TOPIC, V2_TOPIC]],  // Listen for both
+    fromBlock: startBlock,
+    toBlock: 'latest'
+})
+
+for (const log of logs) {
+    if (log.topics[0] === V2_TOPIC) {
+        const event = SrcEscrowCreatedEvent.fromData(log.data)
+        console.log('v2.0 event with fees:', event.dstImmutablesComplement.fees)
+    } else {
+        // Handle v1.1 event (no fees)
+        console.log('v1.1 event without fees')
+    }
+}
+```
+
+### Parameters Field
+
+The `Immutables.parameters` field was added in v2.0:
+
+**v1.1:** No `parameters` field
+
+**v2.0:** Contains encoded `ImmutableFees` (128 bytes when present, `0x` when empty)
+
+## Error Handling
+
+```typescript
+try {
+    const event = SrcEscrowCreatedEvent.fromData(log.data)
+    console.log('Event decoded successfully')
+} catch (error) {
+    console.error('Failed to decode event:', error.message)
+    // Handle malformed log data
+}
+```
+
+## Best Practices
+
+### Use Block Ranges
+
+Avoid querying too many blocks at once:
+
+```typescript
+const BLOCK_RANGE = 1000
+
+for (let block = startBlock; block <= endBlock; block += BLOCK_RANGE) {
+    const logs = await provider.getLogs({
+        topics: [SrcEscrowCreatedEvent.TOPIC],
+        fromBlock: block,
+        toBlock: Math.min(block + BLOCK_RANGE - 1, endBlock)
+    })
+    
+    // Process logs
+}
+```
+
+### Cache Decoded Events
+
+Avoid re-decoding the same events:
+
+```typescript
+const eventCache = new Map<string, SrcEscrowCreatedEvent>()
+
+function getOrDecodeEvent(log: Log): SrcEscrowCreatedEvent {
+    const key = `${log.blockHash}-${log.logIndex}`
+    
+    if (!eventCache.has(key)) {
+        eventCache.set(key, SrcEscrowCreatedEvent.fromData(log.data))
+    }
+    
+    return eventCache.get(key)!
+}
+```
+
+### Handle Chain Reorganizations
+
+Monitor for block reorgs and reprocess affected events:
+
+```typescript
+provider.on('block', async (blockNumber) => {
+    // Check if recent blocks were reorganized
+    // Re-fetch and re-process affected events
+})
+```

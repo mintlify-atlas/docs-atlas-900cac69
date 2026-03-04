@@ -1,0 +1,383 @@
+---
+title: 'WebSocket API'
+description: 'Real-time order tracking and event subscriptions'
+---
+
+The WebSocket API provides high-level functionality for working with Fusion Mode, enabling real-time order tracking and event subscriptions.
+
+## Initialization
+
+### Basic Setup
+
+```typescript
+import { WebSocketApi, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+const wsSdk = new WebSocketApi({
+    url: 'wss://api.1inch.com/fusion-plus/ws',
+    authKey: 'your-auth-key'
+})
+
+wsSdk.order.onOrder((data) => {
+    console.log('received order event', data)
+})
+```
+
+### Configuration Options
+
+**With Constructor:**
+
+```typescript
+const ws = new WebSocketApi({
+    url: 'wss://api.1inch.com/fusion/ws',
+    authKey: 'your-auth-key'
+})
+```
+
+**With Static Method:**
+
+```typescript
+const ws = WebSocketApi.new({
+    url: 'wss://api.1inch.com/fusion-plus/ws',
+})
+```
+
+**Lazy Initialization:**
+
+By default, WebSocketApi automatically opens a connection on instantiation. For more control:
+
+```typescript
+const ws = new WebSocketApi({
+    url: 'wss://api.1inch.com/fusion-plus/ws',
+    network: NetworkEnum.ETHEREUM,
+    lazyInit: true
+})
+
+// Open connection when ready
+ws.init()
+```
+
+### Custom Provider
+
+You can provide a custom WebSocket provider (by default, the SDK uses the [ws library](https://www.npmjs.com/package/ws)):
+
+```typescript
+import { WsProviderConnector, WebSocketApi } from '@1inch/cross-chain-sdk'
+
+class MyFancyProvider implements WsProviderConnector {
+    // ... your implementation
+}
+
+const url = 'wss://api.1inch.com/fusion-plus/ws/v1.2'
+const provider = new MyFancyProvider({ url })
+
+const wsSdk = new WebSocketApi(provider)
+```
+
+## Connection Management
+
+### Connection Events
+
+```typescript
+ws.onOpen(() => {
+    console.log('connection is opened')
+})
+
+ws.onClose(() => {
+    console.log('connection is closed')
+})
+
+ws.onError((error) => {
+    console.log('error is received', error)
+})
+```
+
+### Sending Messages
+
+```typescript
+ws.onOpen(function open() {
+    ws.send('something')
+})
+
+ws.onMessage((data) => {
+    console.log('message received', data)
+})
+```
+
+### Closing Connection
+
+```typescript
+ws.close()
+```
+
+## Order Event Subscriptions
+
+### Subscribe to All Order Events
+
+```typescript
+ws.order.onOrder((data) => {
+    if (data.event === 'order_created') {
+        console.log('Order created:', data.data.orderHash)
+    }
+    if (data.event === 'order_invalid') {
+        console.log('Order invalid:', data.data.orderHash)
+    }
+    if (data.event === 'order_filled') {
+        console.log('Order filled:', data.data.orderHash)
+    }
+})
+```
+
+### Order Created Events
+
+```typescript
+ws.order.onOrderCreated((data) => {
+    console.log('New order:', {
+        orderHash: data.data.orderHash,
+        srcChain: data.data.srcChainId,
+        dstChain: data.data.dstChainId,
+        quoteId: data.data.quoteId
+    })
+})
+```
+
+### Order Filled Events
+
+**Fully Filled:**
+
+```typescript
+ws.order.onOrderFilled((data) => {
+    console.log('Order fully filled:', data.data.orderHash)
+})
+```
+
+**Partially Filled:**
+
+```typescript
+ws.order.onOrderFilledPartially((data) => {
+    console.log('Order partially filled:', {
+        orderHash: data.data.orderHash,
+        remainingAmount: data.data.remainingMakerAmount
+    })
+})
+```
+
+### Order Cancelled Events
+
+```typescript
+ws.order.onOrderCancelled((data) => {
+    console.log('Order cancelled:', {
+        orderHash: data.data.orderHash,
+        remainingAmount: data.data.remainingMakerAmount
+    })
+})
+```
+
+### Order Invalid Events
+
+```typescript
+ws.order.onOrderInvalid((data) => {
+    console.log('Order invalid:', data.data.orderHash)
+})
+```
+
+### Balance and Allowance Changes
+
+```typescript
+ws.order.onOrderBalanceChange((data) => {
+    console.log('Balance changed:', {
+        orderHash: data.data.orderHash,
+        remainingAmount: data.data.remainingMakerAmount,
+        balance: data.data.balance
+    })
+})
+
+ws.order.onOrderAllowanceChange((data) => {
+    console.log('Allowance changed:', {
+        orderHash: data.data.orderHash,
+        remainingAmount: data.data.remainingMakerAmount,
+        allowance: data.data.allowance
+    })
+})
+```
+
+### Secret Shared Events
+
+```typescript
+ws.order.onOrderSecretShared((data) => {
+    console.log('Secret shared:', {
+        idx: data.data.idx,
+        secret: data.data.secret,
+        srcImmutables: data.data.srcImmutables,
+        dstImmutables: data.data.dstImmutables
+    })
+})
+```
+
+## RPC Methods
+
+### Ping/Pong Healthcheck
+
+```typescript
+ws.rpc.ping()
+
+ws.rpc.onPong((data) => {
+    console.log('Pong received:', data)
+})
+```
+
+### Get Allowed Methods
+
+```typescript
+ws.rpc.getAllowedMethods()
+
+ws.rpc.onGetAllowedMethods((methods) => {
+    console.log('Allowed methods:', methods)
+})
+```
+
+### Get Active Orders
+
+```typescript
+ws.rpc.getActiveOrders()
+
+ws.rpc.onGetActiveOrders((data) => {
+    console.log('Active orders:', {
+        total: data.total,
+        orders: data.items
+    })
+})
+```
+
+## Event Types
+
+### OrderEventType
+
+```typescript
+type OrderEventType =
+    | OrderCreatedEvent
+    | OrderInvalidEvent
+    | OrderBalanceChangeEvent
+    | OrderAllowanceChangeEvent
+    | OrderFilledEvent
+    | OrderFilledPartiallyEvent
+    | OrderCancelledEvent
+    | OrderSecretSharedEvent
+```
+
+### Event Enum
+
+```typescript
+enum EventType {
+    OrderCreated = 'order_created',
+    OrderInvalid = 'order_invalid',
+    OrderBalanceChange = 'order_balance_change',
+    OrderAllowanceChange = 'order_allowance_change',
+    OrderFilled = 'order_filled',
+    OrderFilledPartially = 'order_filled_partially',
+    OrderCancelled = 'order_cancelled',
+    OrderSecretShared = 'secret_shared'
+}
+```
+
+### OrderCreatedEvent
+
+```typescript
+type OrderCreatedEvent = Event<
+    EventType.OrderCreated,
+    {
+        srcChainId: SupportedChain
+        dstChainId: SupportedChain
+        orderHash: string
+        order: LimitOrderV4Struct
+        extension: string
+        signature: string
+        isMakerContract: boolean
+        quoteId: string
+        merkleLeaves: string[]
+        secretHashes: string[]
+    }
+>
+```
+
+### RPC Methods
+
+```typescript
+enum RpcMethod {
+    GetAllowedMethods = 'getAllowedMethods',
+    Ping = 'ping',
+    GetActiveOrders = 'getActiveOrders',
+    GetSecrets = 'getSecrets'
+}
+```
+
+## Event Subscription Management
+
+### Subscribe to Events
+
+```typescript
+ws.on(WebSocketEvent.Error, console.error)
+
+ws.on(WebSocketEvent.Open, function open() {
+    ws.send('something')
+})
+
+ws.on(WebSocketEvent.Message, function message(data) {
+    console.log('received: %s', data)
+})
+```
+
+### Unsubscribe from Events
+
+```typescript
+function message(data) {
+    console.log('received: %s', data)
+}
+
+ws.on(WebSocketEvent.Message, message)
+
+// Later, unsubscribe
+ws.off(WebSocketEvent.Message, message)
+```
+
+## Best Practices
+
+### Error Handling
+
+Always implement error handlers:
+
+```typescript
+ws.onError((error) => {
+    console.error('WebSocket error:', error)
+    // Implement reconnection logic
+})
+
+ws.onClose(() => {
+    console.log('Connection closed, reconnecting...')
+    // Implement reconnection logic
+})
+```
+
+### Connection State Management
+
+```typescript
+let isConnected = false
+
+ws.onOpen(() => {
+    isConnected = true
+    // Subscribe to order events
+    ws.order.onOrder(handleOrderEvent)
+})
+
+ws.onClose(() => {
+    isConnected = false
+})
+```
+
+### Resource Cleanup
+
+Always close connections when done:
+
+```typescript
+// When your application exits or component unmounts
+ws.close()
+```

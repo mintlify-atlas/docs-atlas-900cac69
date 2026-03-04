@@ -1,0 +1,532 @@
+---
+title: Order Types
+description: Understanding EVM and Solana cross-chain order structures
+---
+
+## Overview
+
+The 1inch Cross-Chain SDK supports two distinct order types based on the source chain: `EvmCrossChainOrder` for EVM-compatible chains and `SvmCrossChainOrder` for Solana. Each has unique structures and behaviors optimized for their respective blockchain architectures.
+
+## EvmCrossChainOrder
+
+Orders originating from EVM-compatible chains (Ethereum, Polygon, Arbitrum, etc.).
+
+### Class Definition
+
+```typescript
+class EvmCrossChainOrder extends BaseOrder<EvmAddress, LimitOrderV4Struct>
+```
+
+### Key Properties
+
+<ParamField path="maker" type="EvmAddress">
+  The order creator's address on the source chain
+</ParamField>
+
+<ParamField path="makerAsset" type="EvmAddress">
+  Source token address (ERC-20 or wrapped native)
+</ParamField>
+
+<ParamField path="takerAsset" type="AddressLike">
+  Destination token address (can be EVM or Solana)
+</ParamField>
+
+<ParamField path="makingAmount" type="bigint">
+  Amount of source tokens to swap
+</ParamField>
+
+<ParamField path="takingAmount" type="bigint">
+  Minimum amount of destination tokens to receive
+</ParamField>
+
+<ParamField path="receiver" type="AddressLike">
+  Destination chain receiver address (defaults to maker if not set)
+</ParamField>
+
+<ParamField path="dstChainId" type="SupportedChain">
+  Destination chain identifier
+</ParamField>
+
+<ParamField path="extension" type="Extension">
+  Encoded extension containing escrow and auction data
+</ParamField>
+
+<ParamField path="escrowExtension" type="EscrowExtension">
+  Detailed escrow parameters including:
+  - Hash lock information
+  - Time locks
+  - Safety deposits
+  - Auction details
+  - Whitelist configuration
+</ParamField>
+
+<ParamField path="hashLock" type="HashLock">
+  Hash lock for the escrow mechanism
+</ParamField>
+
+<ParamField path="timeLocks" type="TimeLocks">
+  Time-based constraints for escrow operations
+</ParamField>
+
+<ParamField path="srcSafetyDeposit" type="bigint">
+  Safety deposit amount on the source chain
+</ParamField>
+
+<ParamField path="dstSafetyDeposit" type="bigint">
+  Safety deposit amount on the destination chain
+</ParamField>
+
+<ParamField path="auctionStartTime" type="bigint">
+  Unix timestamp in seconds when the auction begins
+</ParamField>
+
+<ParamField path="auctionEndTime" type="bigint">
+  Unix timestamp in seconds when the auction ends
+</ParamField>
+
+<ParamField path="deadline" type="bigint">
+  Order expiration timestamp in seconds
+</ParamField>
+
+<ParamField path="nonce" type="bigint">
+  Unique nonce for the maker
+</ParamField>
+
+<ParamField path="salt" type="bigint">
+  Random salt for order uniqueness
+</ParamField>
+
+<ParamField path="partialFillAllowed" type="boolean">
+  Whether partial fills are permitted
+</ParamField>
+
+<ParamField path="multipleFillsAllowed" type="boolean">
+  Whether multiple separate fills are permitted
+</ParamField>
+
+### Creating EVM Orders
+
+<Tabs>
+  <Tab title="Standard Order">
+    ```typescript
+    import { EvmCrossChainOrder, EvmAddress, HashLock } from '@1inch/cross-chain-sdk'
+
+    const order = EvmCrossChainOrder.new(
+      escrowFactory,
+      {
+        maker: EvmAddress.fromString('0xMaker...'),
+        makerAsset: EvmAddress.fromString('0xUSDC...'),
+        takerAsset: EvmAddress.fromString('0xUSDT...'),
+        makingAmount: 1000000n, // 1 USDC
+        takingAmount: 990000n,  // 0.99 USDT minimum
+        receiver: EvmAddress.fromString('0xReceiver...')
+      },
+      {
+        srcChainId: 1,      // Ethereum
+        dstChainId: 137,    // Polygon
+        hashLock: HashLock.forMultipleFills(secrets),
+        srcSafetyDeposit: 10000n,
+        dstSafetyDeposit: 10000n,
+        timeLocks: TimeLocks.new(...)
+      },
+      {
+        auction: auctionDetails,
+        whitelist: [],
+        fees: {...}
+      },
+      {
+        nonce: 1n,
+        allowMultipleFills: true
+      }
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Native Asset Order">
+    ```typescript
+    import { EvmCrossChainOrder, ProxyFactory } from '@1inch/cross-chain-sdk'
+
+    // Create order from native ETH
+    const nativeOrder = EvmCrossChainOrder.fromNative(
+      1, // Ethereum chainId
+      ethOrdersFactory,
+      escrowFactory,
+      {
+        maker: EvmAddress.fromString('0xMaker...'),
+        // makerAsset omitted - will use WETH
+        takerAsset: EvmAddress.fromString('0xUSDC...'),
+        makingAmount: parseEther('1'), // 1 ETH
+        takingAmount: 3000000000n      // 3000 USDC
+      },
+      details,
+      escrowParams
+    )
+
+    // Native orders require on-chain submission
+    // await nativeOrderFactory.create(order, signature)
+    ```
+  </Tab>
+  
+  <Tab title="From Existing Data">
+    ```typescript
+    // Reconstruct order from on-chain or API data
+    const order = EvmCrossChainOrder.fromDataAndExtension(
+      orderStruct,
+      extension
+    )
+
+    console.log('Maker:', order.maker.toString())
+    console.log('Making amount:', order.makingAmount)
+    console.log('Auction start:', order.auctionStartTime)
+    ```
+  </Tab>
+</Tabs>
+
+### Key Methods
+
+```typescript
+// Build order structure for submission
+const orderStruct: LimitOrderV4Struct = order.build()
+
+// Get order hash
+const hash: string = order.getOrderHash(srcChainId)
+
+// Get EIP-712 typed data for signing
+const typedData = order.getTypedData(srcChainId)
+
+// Check if address is exclusive resolver
+const isExclusive: boolean = order.isExclusiveResolver(resolverAddress)
+
+// Check if in exclusivity period
+const inPeriod: boolean = order.isExclusivityPeriod(timestamp)
+
+// Calculate resolver fee
+const fee: bigint = order.getResolverFee(takerAddress, timestamp)
+
+// Get auction calculator
+const calculator = order.getCalculator()
+```
+
+## SvmCrossChainOrder
+
+Orders originating from Solana (SVM - Solana Virtual Machine).
+
+### Class Definition
+
+```typescript
+class SvmCrossChainOrder extends BaseOrder<SolanaAddress, SolanaOrderJSON>
+```
+
+### Key Properties
+
+<ParamField path="maker" type="SolanaAddress">
+  The order creator's Solana address
+</ParamField>
+
+<ParamField path="makerAsset" type="SolanaAddress">
+  Source token mint address (SPL token or wrapped SOL)
+</ParamField>
+
+<ParamField path="takerAsset" type="EvmAddress">
+  Destination EVM token address
+</ParamField>
+
+<ParamField path="makingAmount" type="bigint">
+  Amount of source tokens (u64 range)
+</ParamField>
+
+<ParamField path="takingAmount" type="bigint">
+  Minimum amount of destination tokens (u256)
+</ParamField>
+
+<ParamField path="receiver" type="EvmAddress">
+  EVM receiver address (required for Solana orders)
+</ParamField>
+
+<ParamField path="dstChainId" type="SupportedChain">
+  Destination EVM chain ID
+</ParamField>
+
+<ParamField path="auction" type="AuctionDetails">
+  Auction configuration with start time, duration, and rate curve
+</ParamField>
+
+<ParamField path="hashLock" type="HashLock">
+  Hash lock for escrow
+</ParamField>
+
+<ParamField path="timeLocks" type="TimeLocks">
+  Time lock configuration
+</ParamField>
+
+<ParamField path="srcSafetyDeposit" type="bigint">
+  Safety deposit in lamports (u64)
+</ParamField>
+
+<ParamField path="dstSafetyDeposit" type="bigint">
+  Safety deposit in wei (u64)
+</ParamField>
+
+<ParamField path="deadline" type="bigint">
+  Order expiration (u32 timestamp)
+</ParamField>
+
+<ParamField path="salt" type="bigint">
+  Unique salt (u64)
+</ParamField>
+
+<ParamField path="srcAssetIsNative" type="boolean">
+  Whether the source asset is native SOL
+</ParamField>
+
+<ParamField path="resolverCancellationConfig" type="ResolverCancellationConfig">
+  Configuration for resolver-based cancellations:
+  - `maxCancellationPremium`: Maximum premium for cancellation
+  - `cancellationAuctionDuration`: Duration of cancellation auction
+</ParamField>
+
+<ParamField path="multipleFillsAllowed" type="boolean">
+  Whether multiple fills are allowed
+</ParamField>
+
+### Creating Solana Orders
+
+<Tabs>
+  <Tab title="Standard Order">
+    ```typescript
+    import { SvmCrossChainOrder, SolanaAddress, EvmAddress } from '@1inch/cross-chain-sdk'
+
+    const order = SvmCrossChainOrder.new(
+      {
+        maker: SolanaAddress.fromString('MakerAddress...'),
+        srcToken: SolanaAddress.fromString('TokenMint...'),
+        dstToken: EvmAddress.fromString('0xUSDC...'),
+        srcAmount: 1000000n,
+        minDstAmount: 990000n,
+        receiver: EvmAddress.fromString('0xReceiver...')
+      },
+      {
+        srcChainId: NetworkEnum.SOLANA,
+        dstChainId: 1, // Ethereum
+        hashLock: HashLock.forMultipleFills(secrets),
+        srcSafetyDeposit: 10000000n,  // lamports
+        dstSafetyDeposit: 10000n,      // wei
+        timeLocks: TimeLocks.new(...)
+      },
+      {
+        auction: auctionDetails
+      },
+      {
+        allowMultipleFills: true,
+        source: 'my-dapp'
+      }
+    )
+    ```
+  </Tab>
+  
+  <Tab title="From JSON">
+    ```typescript
+    // Reconstruct from API response
+    const order = SvmCrossChainOrder.fromJSON(orderJSON)
+
+    console.log('Maker:', order.maker.toString())
+    console.log('Order hash (base58):', order.getOrderHash())
+    ```
+  </Tab>
+  
+  <Tab title="From Contract">
+    ```typescript
+    // Parse from on-chain data
+    const order = SvmCrossChainOrder.fromContractOrder(
+      parsedInstructionData,
+      auctionDetails
+    )
+    ```
+  </Tab>
+</Tabs>
+
+### Key Methods
+
+```typescript
+// Get order hash (base58 encoded)
+const hash: string = order.getOrderHash(NetworkEnum.SOLANA)
+
+// Get order hash as buffer
+const hashBuffer: Buffer = order.getOrderHashBuffer()
+
+// Get order account address
+const account: SolanaAddress = order.getOrderAccount(programId)
+
+// Get escrow address
+const escrow: SolanaAddress = order.getSrcEscrowAddress(
+  programId,
+  takerAddress,
+  hashLock,
+  fillAmount
+)
+
+// Get escrow ATA (Associated Token Account)
+const ata: SolanaAddress = order.getSrcEscrowATA({
+  programId,
+  taker: takerAddress,
+  tokenProgramId
+})
+
+// Convert to JSON
+const json: SolanaOrderJSON = order.toJSON()
+
+// Get auction calculator
+const calculator = order.getCalculator()
+```
+
+## Structure Differences
+
+| Feature | EvmCrossChainOrder | SvmCrossChainOrder |
+|---------|-------------------|-------------------|
+| **Source Chain** | EVM chains | Solana |
+| **Address Type** | `EvmAddress` | `SolanaAddress` |
+| **Order Hash** | Hex string (0x...) | Base58 string |
+| **Data Structure** | `LimitOrderV4Struct` | `SolanaOrderJSON` |
+| **Extension** | Encoded in `Extension` | Stored in `auction` field |
+| **Signature** | EIP-712 typed data | Not required (submitted on-chain first) |
+| **Receiver** | Optional (defaults to maker) | Required |
+| **Native Assets** | Via `fromNative()` | Via `srcAssetIsNative` flag |
+| **Amount Limits** | u256 | u64 for source, u256 for dest |
+| **Cancellation** | Standard | Resolver cancellation config |
+| **Announcement** | Not required | Required via `announceOrder()` |
+
+## Extension and Auction Details
+
+### EVM Extension Structure
+
+The `EscrowExtension` contains:
+
+```typescript
+class EscrowExtension {
+  escrowFactory: EvmAddress
+  auctionDetails: AuctionDetails
+  whitelist: Whitelist
+  hashLockInfo: HashLock
+  dstChainId: SupportedChain
+  dstToken: AddressLike
+  srcSafetyDeposit: bigint
+  dstSafetyDeposit: bigint
+  timeLocks: TimeLocks
+  dstAddressFirstPart: AddressComplement
+  makerPermit?: Interaction
+  fees?: Fees
+}
+```
+
+### Auction Details
+
+Both order types include auction configuration:
+
+```typescript
+type AuctionDetails = {
+  startTime: bigint        // Unix timestamp in seconds
+  duration: bigint         // Auction duration in seconds
+  initialRateBump: number  // Initial price improvement %
+  points: AuctionPoint[]   // Price curve points
+}
+
+type AuctionPoint = {
+  delay: bigint      // Time offset from start
+  coefficient: number // Price multiplier
+}
+```
+
+### Time Locks
+
+```typescript
+class TimeLocks {
+  // Deadline for source escrow withdrawal by resolver
+  srcWithdrawal: bigint
+  
+  // Deadline for source escrow public cancellation
+  srcPublicWithdrawal: bigint
+  
+  // Deadline for destination escrow cancellation
+  dstWithdrawal: bigint
+  
+  // Deadline for destination escrow public cancellation
+  dstPublicWithdrawal: bigint
+  
+  // Build into u256 format
+  build(): bigint
+}
+```
+
+## Usage Examples
+
+<Tabs>
+  <Tab title="Check Order Type">
+    ```typescript
+    const { order } = sdk.createOrder(quote, params)
+
+    if (order instanceof EvmCrossChainOrder) {
+      console.log('EVM order')
+      console.log('Extension:', order.extension.encode())
+      console.log('Can sign with wallet')
+    } else if (order instanceof SvmCrossChainOrder) {
+      console.log('Solana order')
+      console.log('Auction hash:', order.auction.hashForSolana())
+      console.log('Must announce before on-chain creation')
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Access Common Properties">
+    ```typescript
+    // Both order types share common interface
+    function logOrderInfo(order: EvmCrossChainOrder | SvmCrossChainOrder) {
+      console.log('Maker:', order.maker.toString())
+      console.log('Making amount:', order.makingAmount.toString())
+      console.log('Taking amount:', order.takingAmount.toString())
+      console.log('Destination chain:', order.dstChainId)
+      console.log('Hash lock:', order.hashLock.toString())
+      console.log('Auction start:', order.auctionStartTime.toString())
+      console.log('Multiple fills:', order.multipleFillsAllowed)
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Calculate Auction Price">
+    ```typescript
+    // Works for both order types
+    const calculator = order.getCalculator()
+    
+    const currentTime = BigInt(Math.floor(Date.now() / 1000))
+    const currentRate = calculator.getRateBump(currentTime)
+    
+    console.log('Current auction rate:', currentRate)
+    
+    // Calculate taking amount at current time
+    const takingAmount = calculator.calcTakingAmount(
+      order.makingAmount,
+      currentTime
+    )
+    
+    console.log('Current taking amount:', takingAmount.toString())
+    ```
+  </Tab>
+</Tabs>
+
+## Notes
+
+- EVM orders support both EVM and Solana as destination chains
+- Solana orders currently only support EVM chains as destinations
+- Order hash format differs: use appropriate comparison methods
+- Solana orders must be announced to the relayer before on-chain creation
+- EVM native orders require special handling via `fromNative()` and `submitNativeOrder()`
+- Amount ranges differ: Solana is limited to u64 for source amounts
+- Extension encoding is specific to EVM orders
+- Both types support the same hash lock and escrow mechanisms
+
+## Related Documentation
+
+- [Create Order](/api/orders/create-order) - Create orders from quotes
+- [Submit Order](/api/orders/submit-order) - Submit EVM orders
+- [Announce Order](/api/orders/announce-order) - Announce Solana orders
+- [Hash Lock](/api/core/hash-lock) - Understanding hash locks
+- [Auction Details](/api/core/auction-details) - Auction configuration

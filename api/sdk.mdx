@@ -1,0 +1,1043 @@
+---
+title: 'SDK'
+description: 'Main SDK class for interacting with the 1inch Cross-Chain Fusion protocol'
+---
+
+The `SDK` class is the primary interface for interacting with the 1inch Cross-Chain Fusion protocol. It provides methods for getting quotes, creating orders, submitting orders, and managing order lifecycle.
+
+## Constructor
+
+```typescript
+constructor(config: CrossChainSDKConfigParams)
+```
+
+Initializes a new SDK instance with the provided configuration.
+
+<ParamField path="config" type="CrossChainSDKConfigParams" required>
+  Configuration object for the SDK. See [SDK Config](/api/sdk-config) for details.
+</ParamField>
+
+**Example:**
+
+```typescript
+import { SDK } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  blockchainProvider: yourProvider
+})
+```
+
+## Properties
+
+<ResponseField name="api" type="FusionApi">
+  Public readonly instance of the Fusion API client used for making HTTP requests to the 1inch Fusion API.
+</ResponseField>
+
+---
+
+## Quote Methods
+
+### getQuote
+
+```typescript
+async getQuote(params: QuoteParams): Promise<Quote>
+```
+
+Retrieves a quote for a cross-chain swap with recommended presets.
+
+<ParamField path="params" type="QuoteParams" required>
+  Parameters for the quote request
+  
+  <Expandable title="QuoteParams properties">
+    <ParamField path="srcChainId" type="SupportedChain" required>
+      Source chain ID
+    </ParamField>
+    
+    <ParamField path="dstChainId" type="SupportedChain" required>
+      Destination chain ID
+    </ParamField>
+    
+    <ParamField path="srcTokenAddress" type="string" required>
+      Source token address
+    </ParamField>
+    
+    <ParamField path="dstTokenAddress" type="string" required>
+      Destination token address
+    </ParamField>
+    
+    <ParamField path="amount" type="string" required>
+      Amount of source token to swap (in wei/smallest unit)
+    </ParamField>
+    
+    <ParamField path="walletAddress" type="string" required>
+      Wallet address of the maker
+    </ParamField>
+    
+    <ParamField path="enableEstimate" type="boolean">
+      Enable estimation to receive a quoteId (required for order creation)
+    </ParamField>
+    
+    <ParamField path="permit" type="string">
+      Permit signature for gasless approval
+    </ParamField>
+    
+    <ParamField path="integratorFee" type="IntegratorFeeRequest">
+      Integrator fee configuration
+    </ParamField>
+    
+    <ParamField path="source" type="string">
+      Source identifier for analytics
+    </ParamField>
+    
+    <ParamField path="isPermit2" type="boolean">
+      Whether to use Permit2 for token approval
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** `Promise<Quote>` - Quote object containing swap details and presets
+
+**Example:**
+
+```typescript
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.BINANCE,
+  srcTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
+  dstTokenAddress: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', // USDC on BSC
+  amount: '1000000', // 1 USDC
+  walletAddress: '0x...',
+  enableEstimate: true
+})
+```
+
+### getQuoteWithCustomPreset
+
+```typescript
+async getQuoteWithCustomPreset(
+  params: QuoteParams,
+  body: QuoteCustomPresetParams
+): Promise<Quote>
+```
+
+Retrieves a quote with a custom auction preset instead of using recommended presets.
+
+<ParamField path="params" type="QuoteParams" required>
+  Quote parameters (same as `getQuote`)
+</ParamField>
+
+<ParamField path="body" type="QuoteCustomPresetParams" required>
+  Custom preset configuration
+  
+  <Expandable title="QuoteCustomPresetParams properties">
+    <ParamField path="customPreset" type="CustomPreset" required>
+      Custom auction preset configuration defining auction parameters
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** `Promise<Quote>` - Quote object with custom preset applied
+
+**Example:**
+
+```typescript
+const quote = await sdk.getQuoteWithCustomPreset(
+  {
+    srcChainId: NetworkEnum.ETHEREUM,
+    dstChainId: NetworkEnum.POLYGON,
+    srcTokenAddress: '0x...',
+    dstTokenAddress: '0x...',
+    amount: '1000000',
+    walletAddress: '0x...',
+    enableEstimate: true
+  },
+  {
+    customPreset: {
+      auctionDuration: 180,
+      startAuctionIn: 30,
+      initialRateBump: 10000,
+      auctionPoints: [
+        { delay: 60, coefficient: 5000 },
+        { delay: 120, coefficient: 2500 }
+      ]
+    }
+  }
+)
+```
+
+---
+
+## Order Creation Methods
+
+### createOrder
+
+```typescript
+createOrder(quote: Quote, params: OrderParams): PreparedOrder
+```
+
+Creates a cross-chain order from a quote. This method prepares the order for signing and submission but does not submit it.
+
+<ParamField path="quote" type="Quote" required>
+  Quote object obtained from `getQuote` or `getQuoteWithCustomPreset`. Must have `enableEstimate: true` to generate a `quoteId`.
+</ParamField>
+
+<ParamField path="params" type="OrderParams" required>
+  Order creation parameters
+  
+  <Expandable title="OrderParams properties">
+    <ParamField path="walletAddress" type="string" required>
+      Maker's wallet address
+    </ParamField>
+    
+    <ParamField path="hashLock" type="HashLock" required>
+      Hash lock configuration for atomic swap security
+    </ParamField>
+    
+    <ParamField path="secretHashes" type="string[]" required>
+      Array of secret hashes for the order
+    </ParamField>
+    
+    <ParamField path="permit" type="string">
+      Permit signature (without first 20 bytes of token address)
+    </ParamField>
+    
+    <ParamField path="receiver" type="string">
+      Receiver address on destination chain (defaults to walletAddress)
+    </ParamField>
+    
+    <ParamField path="preset" type="PresetEnum">
+      Auction preset to use (defaults to recommended preset)
+    </ParamField>
+    
+    <ParamField path="nonce" type="bigint">
+      Unique nonce for the order (can be serial or random)
+    </ParamField>
+    
+    <ParamField path="source" type="string">
+      Source identifier for analytics
+    </ParamField>
+    
+    <ParamField path="isPermit2" type="boolean">
+      Whether to use Permit2
+    </ParamField>
+    
+    <ParamField path="customPreset" type="CustomPreset">
+      Custom preset configuration
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** `PreparedOrder` object containing:
+
+<ResponseField name="order" type="EvmCrossChainOrder | SvmCrossChainOrder">
+  The created cross-chain order object
+</ResponseField>
+
+<ResponseField name="hash" type="string">
+  The order hash
+</ResponseField>
+
+<ResponseField name="quoteId" type="string">
+  The quote ID from the original quote
+</ResponseField>
+
+**Example:**
+
+```typescript
+import { HashLock } from '@1inch/cross-chain-sdk'
+
+const secret = '0x1234...'
+const hashLock = HashLock.forSingleFill(secret)
+
+const preparedOrder = sdk.createOrder(quote, {
+  walletAddress: '0x...',
+  hashLock,
+  secretHashes: [hashLock.secretHashes[0]],
+  receiver: '0x...' // optional
+})
+```
+
+---
+
+## Order Submission Methods
+
+### submitOrder
+
+```typescript
+async submitOrder(
+  srcChainId: SupportedChain,
+  order: EvmCrossChainOrder,
+  quoteId: string,
+  secretHashes: string[]
+): Promise<OrderInfo>
+```
+
+Submits an EVM order to the relayer. This method automatically signs the order using the configured `blockchainProvider`.
+
+<Tip>
+For orders involving native assets (ETH, MATIC, BNB, etc.), use `submitNativeOrder` instead.
+</Tip>
+
+<ParamField path="srcChainId" type="SupportedChain" required>
+  Source chain ID
+</ParamField>
+
+<ParamField path="order" type="EvmCrossChainOrder" required>
+  The EVM cross-chain order to submit
+</ParamField>
+
+<ParamField path="quoteId" type="string" required>
+  Quote ID from the original quote
+</ParamField>
+
+<ParamField path="secretHashes" type="string[]" required>
+  Array of secret hashes for the order
+</ParamField>
+
+**Returns:** `Promise<OrderInfo>` containing:
+
+<ResponseField name="order" type="LimitOrderV4Struct">
+  The order struct
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  The order signature
+</ResponseField>
+
+<ResponseField name="quoteId" type="string">
+  The quote ID
+</ResponseField>
+
+<ResponseField name="orderHash" type="string">
+  The order hash
+</ResponseField>
+
+<ResponseField name="extension" type="string">
+  Encoded order extension data
+</ResponseField>
+
+**Example:**
+
+```typescript
+const orderInfo = await sdk.submitOrder(
+  NetworkEnum.ETHEREUM,
+  order,
+  quoteId,
+  secretHashes
+)
+
+console.log('Order submitted:', orderInfo.orderHash)
+```
+
+### submitNativeOrder
+
+```typescript
+async submitNativeOrder(
+  srcChainId: SupportedChain,
+  order: EvmCrossChainOrder,
+  maker: EvmAddress,
+  quoteId: string,
+  secretHashes: string[]
+): Promise<OrderInfo>
+```
+
+Submits an order involving native assets (ETH, MATIC, BNB, etc.) to the relayer.
+
+<Warning>
+Native asset orders must also be submitted on-chain using `NativeOrdersFactory.create` in addition to being submitted to the relayer.
+</Warning>
+
+<ParamField path="srcChainId" type="SupportedChain" required>
+  Source chain ID
+</ParamField>
+
+<ParamField path="order" type="EvmCrossChainOrder" required>
+  The EVM cross-chain order to submit
+</ParamField>
+
+<ParamField path="maker" type="EvmAddress" required>
+  Maker's EVM address
+</ParamField>
+
+<ParamField path="quoteId" type="string" required>
+  Quote ID from the original quote
+</ParamField>
+
+<ParamField path="secretHashes" type="string[]" required>
+  Array of secret hashes for the order
+</ParamField>
+
+**Returns:** `Promise<OrderInfo>` - Same structure as `submitOrder`
+
+### placeOrder
+
+```typescript
+async placeOrder(quote: Quote, params: OrderParams): Promise<OrderInfo>
+```
+
+Convenience method that combines `createOrder` and `submitOrder` in a single call. Only works for EVM orders.
+
+<ParamField path="quote" type="Quote" required>
+  Quote object with `enableEstimate: true`
+</ParamField>
+
+<ParamField path="params" type="OrderParams" required>
+  Order parameters (same as `createOrder`)
+</ParamField>
+
+**Returns:** `Promise<OrderInfo>` - Order information after submission
+
+**Throws:** Error if the order is a Solana order (Solana orders must use `announceOrder` and be placed on-chain)
+
+**Example:**
+
+```typescript
+const orderInfo = await sdk.placeOrder(quote, {
+  walletAddress: '0x...',
+  hashLock,
+  secretHashes: [hashLock.secretHashes[0]]
+})
+```
+
+---
+
+## Signing Methods
+
+### signOrder
+
+```typescript
+async signOrder(
+  order: EvmCrossChainOrder,
+  srcChainId: SupportedChain
+): Promise<string>
+```
+
+Signs an EVM order using the `blockchainProvider` configured in the SDK.
+
+<Warning>
+For native asset orders, use `signNativeOrder` instead.
+</Warning>
+
+<ParamField path="order" type="EvmCrossChainOrder" required>
+  The order to sign
+</ParamField>
+
+<ParamField path="srcChainId" type="SupportedChain" required>
+  Source chain ID
+</ParamField>
+
+**Returns:** `Promise<string>` - The signature
+
+**Throws:** Error if `blockchainProvider` is not configured
+
+### signNativeOrder
+
+```typescript
+signNativeOrder(
+  order: EvmCrossChainOrder,
+  maker: EvmAddress
+): string
+```
+
+Generates a signature for native asset orders. This is a synchronous method that creates a special signature for native orders.
+
+<ParamField path="order" type="EvmCrossChainOrder" required>
+  The native order to sign
+</ParamField>
+
+<ParamField path="maker" type="EvmAddress" required>
+  Maker's address
+</ParamField>
+
+**Returns:** `string` - The native order signature
+
+---
+
+## Solana Order Methods
+
+### announceOrder
+
+```typescript
+async announceOrder(
+  order: SvmCrossChainOrder,
+  quoteId: string,
+  secretHashes: string[]
+): Promise<string>
+```
+
+Announces a Solana order to the relayer before on-chain creation. This is required because on-chain data does not contain auction details.
+
+<Info>
+After announcing, you must also create the order on-chain using the appropriate Solana program instructions.
+</Info>
+
+<ParamField path="order" type="SvmCrossChainOrder" required>
+  The Solana cross-chain order
+</ParamField>
+
+<ParamField path="quoteId" type="string" required>
+  Quote ID from the original quote
+</ParamField>
+
+<ParamField path="secretHashes" type="string[]" required>
+  Array of secret hashes (length must match the number of secrets in hashLock)
+</ParamField>
+
+**Returns:** `Promise<string>` - The order hash
+
+**Throws:** Error if secret hashes length doesn't match the expected count
+
+**Example:**
+
+```typescript
+const orderHash = await sdk.announceOrder(
+  solanaOrder,
+  quoteId,
+  secretHashes
+)
+
+console.log('Order announced:', orderHash)
+// Now create the order on-chain...
+```
+
+---
+
+## Order Status and History Methods
+
+### getOrderStatus
+
+```typescript
+async getOrderStatus(orderHash: string): Promise<OrderStatusResponse>
+```
+
+Retrieves the current status and details of an order.
+
+<ParamField path="orderHash" type="string" required>
+  The order hash to query
+</ParamField>
+
+**Returns:** `Promise<OrderStatusResponse>` containing:
+
+<ResponseField name="orderHash" type="string">
+  The order hash
+</ResponseField>
+
+<ResponseField name="status" type="OrderStatus">
+  Current order status: `pending`, `executed`, `expired`, `cancelled`, `refunding`, or `refunded`
+</ResponseField>
+
+<ResponseField name="validation" type="ValidationStatus">
+  Validation status of the order
+</ResponseField>
+
+<ResponseField name="points" type="AuctionPoint[]">
+  Auction curve points
+</ResponseField>
+
+<ResponseField name="approximateTakingAmount" type="string">
+  Estimated amount to be received
+</ResponseField>
+
+<ResponseField name="fills" type="Fill[]">
+  Array of fill executions for this order
+</ResponseField>
+
+<ResponseField name="auctionStartDate" type="number">
+  Auction start timestamp (Unix seconds)
+</ResponseField>
+
+<ResponseField name="auctionDuration" type="number">
+  Auction duration in seconds
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Order creation timestamp (Unix milliseconds)
+</ResponseField>
+
+<ResponseField name="cancelable" type="boolean">
+  Whether the order can be cancelled
+</ResponseField>
+
+**Example:**
+
+```typescript
+const status = await sdk.getOrderStatus(orderHash)
+
+if (status.status === OrderStatus.Executed) {
+  console.log('Order executed!')
+  console.log('Fills:', status.fills)
+}
+```
+
+### getActiveOrders
+
+```typescript
+async getActiveOrders(
+  params?: ActiveOrdersRequestParams
+): Promise<ActiveOrdersResponse>
+```
+
+Retrieves active orders with optional filtering and pagination.
+
+<ParamField path="params" type="ActiveOrdersRequestParams">
+  Optional filter and pagination parameters
+  
+  <Expandable title="ActiveOrdersRequestParams properties">
+    <ParamField path="srcChainId" type="SupportedChain">
+      Filter by source chain
+    </ParamField>
+    
+    <ParamField path="dstChainId" type="SupportedChain">
+      Filter by destination chain
+    </ParamField>
+    
+    <ParamField path="orderVersion" type="ApiVersion[]">
+      Filter by API version
+    </ParamField>
+    
+    <ParamField path="page" type="number">
+      Page number (default: 1)
+    </ParamField>
+    
+    <ParamField path="limit" type="number">
+      Items per page (default: 100)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** `Promise<ActiveOrdersResponse>` - Paginated list of active orders
+
+<ResponseField name="meta" type="PaginationMeta">
+  Pagination metadata including total items, pages, etc.
+</ResponseField>
+
+<ResponseField name="items" type="ActiveOrder[]">
+  Array of active orders
+</ResponseField>
+
+**Example:**
+
+```typescript
+const activeOrders = await sdk.getActiveOrders({
+  srcChainId: NetworkEnum.ETHEREUM,
+  page: 1,
+  limit: 50
+})
+
+console.log(`Found ${activeOrders.meta.totalItems} active orders`)
+```
+
+### getOrdersByMaker
+
+```typescript
+async getOrdersByMaker(
+  params: OrdersByMakerParams
+): Promise<OrdersByMakerResponse>
+```
+
+Retrieves orders created by a specific maker address with filtering options.
+
+<ParamField path="params" type="OrdersByMakerParams" required>
+  Filter parameters
+  
+  <Expandable title="OrdersByMakerParams properties">
+    <ParamField path="address" type="string" required>
+      Maker's wallet address
+    </ParamField>
+    
+    <ParamField path="srcChain" type="SupportedChain">
+      Filter by source chain
+    </ParamField>
+    
+    <ParamField path="dstChain" type="SupportedChain">
+      Filter by destination chain
+    </ParamField>
+    
+    <ParamField path="srcToken" type="string">
+      Filter by source token address
+    </ParamField>
+    
+    <ParamField path="dstToken" type="string">
+      Filter by destination token address
+    </ParamField>
+    
+    <ParamField path="withToken" type="string">
+      Filter by either source or destination token
+    </ParamField>
+    
+    <ParamField path="timestampFrom" type="number">
+      Filter orders created after this timestamp
+    </ParamField>
+    
+    <ParamField path="timestampTo" type="number">
+      Filter orders created before this timestamp
+    </ParamField>
+    
+    <ParamField path="orderVersion" type="ApiVersion[]">
+      Filter by API version
+    </ParamField>
+    
+    <ParamField path="page" type="number">
+      Page number
+    </ParamField>
+    
+    <ParamField path="limit" type="number">
+      Items per page
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** `Promise<OrdersByMakerResponse>` - Paginated list of orders
+
+**Example:**
+
+```typescript
+const myOrders = await sdk.getOrdersByMaker({
+  address: '0x...',
+  srcChain: NetworkEnum.ETHEREUM,
+  page: 1,
+  limit: 20
+})
+```
+
+---
+
+## Secret Management Methods
+
+### getReadyToAcceptSecretFills
+
+```typescript
+async getReadyToAcceptSecretFills(
+  orderHash: string
+): Promise<ReadyToAcceptSecretFills>
+```
+
+Retrieves fills that are ready to accept secret submission for an order.
+
+<ParamField path="orderHash" type="string" required>
+  The order hash
+</ParamField>
+
+**Returns:** `Promise<ReadyToAcceptSecretFills>` containing:
+
+<ResponseField name="fills" type="ReadyToAcceptSecretFill[]">
+  Array of fills ready for secret submission
+  
+  <Expandable title="ReadyToAcceptSecretFill properties">
+    <ResponseField name="idx" type="number">
+      Fill index
+    </ResponseField>
+    
+    <ResponseField name="srcEscrowDeployTxHash" type="string">
+      Source escrow deployment transaction hash
+    </ResponseField>
+    
+    <ResponseField name="dstEscrowDeployTxHash" type="string">
+      Destination escrow deployment transaction hash
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### submitSecret
+
+```typescript
+async submitSecret(orderHash: string, secret: string): Promise<void>
+```
+
+Submits the secret for an order to enable withdrawal on the destination chain.
+
+<ParamField path="orderHash" type="string" required>
+  The order hash
+</ParamField>
+
+<ParamField path="secret" type="string" required>
+  The secret value (must match the hash lock)
+</ParamField>
+
+**Returns:** `Promise<void>`
+
+**Example:**
+
+```typescript
+// Check which fills are ready
+const ready = await sdk.getReadyToAcceptSecretFills(orderHash)
+
+if (ready.fills.length > 0) {
+  // Submit the secret
+  await sdk.submitSecret(orderHash, secret)
+  console.log('Secret submitted!')
+}
+```
+
+### getPublishedSecrets
+
+```typescript
+async getPublishedSecrets(
+  orderHash: string
+): Promise<PublishedSecretsResponse>
+```
+
+Retrieves all published secrets for an order.
+
+<ParamField path="orderHash" type="string" required>
+  The order hash
+</ParamField>
+
+**Returns:** `Promise<PublishedSecretsResponse>` containing:
+
+<ResponseField name="orderType" type="OrderType">
+  Order type: `SingleFill` or `MultipleFills`
+</ResponseField>
+
+<ResponseField name="secrets" type="PublicSecret[]">
+  Array of published secrets with escrow details
+</ResponseField>
+
+<ResponseField name="secretHashes" type="string[]">
+  Array of secret hashes (empty for single fill orders)
+</ResponseField>
+
+---
+
+## Order Cancellation Methods
+
+### buildCancelOrderCallData
+
+```typescript
+async buildCancelOrderCallData(orderHash: string): Promise<string>
+```
+
+Builds the calldata for cancelling an EVM order on-chain.
+
+<Warning>
+This method only works for orders with EVM source chains. It will throw an error for Solana orders.
+</Warning>
+
+<ParamField path="orderHash" type="string" required>
+  The order hash to cancel
+</ParamField>
+
+**Returns:** `Promise<string>` - Encoded calldata for the cancel transaction
+
+**Throws:** 
+- Error if order is not found
+- Error if source chain is not EVM
+
+**Example:**
+
+```typescript
+const calldata = await sdk.buildCancelOrderCallData(orderHash)
+
+// Use the calldata to submit a cancel transaction
+await signer.sendTransaction({
+  to: SETTLEMENT_CONTRACT_ADDRESS,
+  data: calldata
+})
+```
+
+### getCancellableOrders
+
+```typescript
+async getCancellableOrders(
+  chainType?: ChainType,
+  page?: number,
+  limit?: number,
+  orderVersion?: ApiVersion[]
+): Promise<PaginationOutput<EvmOrderCancellationData> | PaginationOutput<SvmOrderCancellationData>>
+```
+
+Retrieves on-chain created orders that can be cancelled by a resolver for a premium.
+
+<ParamField path="chainType" type="ChainType">
+  Chain type to filter: `ChainType.EVM` or `ChainType.SVM` (default: `ChainType.SVM`)
+</ParamField>
+
+<ParamField path="page" type="number">
+  Page number (default: 1)
+</ParamField>
+
+<ParamField path="limit" type="number">
+  Items per page (default: 100)
+</ParamField>
+
+<ParamField path="orderVersion" type="ApiVersion[]">
+  Filter by API version
+</ParamField>
+
+**Returns:** Paginated list of cancellable orders. Return type depends on `chainType`:
+
+**For EVM orders:**
+
+<ResponseField name="items" type="EvmOrderCancellationData[]">
+  <Expandable title="EvmOrderCancellationData properties">
+    <ResponseField name="orderHash" type="string">
+      Order hash
+    </ResponseField>
+    
+    <ResponseField name="maker" type="EvmAddress">
+      Maker address
+    </ResponseField>
+    
+    <ResponseField name="srcChainId" type="EvmChain">
+      Source chain ID
+    </ResponseField>
+    
+    <ResponseField name="dstChainId" type="SupportedChain">
+      Destination chain ID
+    </ResponseField>
+    
+    <ResponseField name="order" type="LimitOrderV4Struct">
+      Order struct
+    </ResponseField>
+    
+    <ResponseField name="extension" type="string">
+      Order extension data
+    </ResponseField>
+    
+    <ResponseField name="remainingMakerAmount" type="bigint">
+      Remaining amount to be filled
+    </ResponseField>
+    
+    <ResponseField name="version" type="ApiVersion">
+      API version
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**For Solana orders:**
+
+<ResponseField name="items" type="SvmOrderCancellationData[]">
+  <Expandable title="SvmOrderCancellationData properties">
+    <ResponseField name="orderHash" type="Buffer">
+      Order hash as Buffer
+    </ResponseField>
+    
+    <ResponseField name="maker" type="SolanaAddress">
+      Maker address
+    </ResponseField>
+    
+    <ResponseField name="token" type="SolanaAddress">
+      Source token address
+    </ResponseField>
+    
+    <ResponseField name="cancellationConfig" type="ResolverCancellationConfig">
+      Cancellation configuration including premium and auction duration
+    </ResponseField>
+    
+    <ResponseField name="isAssetNative" type="boolean">
+      Whether the source asset is native SOL
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+
+```typescript
+import { ChainType } from '@1inch/cross-chain-sdk'
+
+// Get cancellable Solana orders
+const svmOrders = await sdk.getCancellableOrders(
+  ChainType.SVM,
+  1,
+  50
+)
+
+// Get cancellable EVM orders
+const evmOrders = await sdk.getCancellableOrders(
+  ChainType.EVM,
+  1,
+  50
+)
+```
+
+---
+
+## Public Actions
+
+### getReadyToExecutePublicActions
+
+```typescript
+async getReadyToExecutePublicActions(
+  filter?: OrderVersionFilter
+): Promise<ReadyToExecutePublicActions>
+```
+
+Retrieves public actions (withdrawals, cancellations) that are ready to be executed.
+
+<ParamField path="filter" type="OrderVersionFilter">
+  Optional filter
+  
+  <Expandable title="OrderVersionFilter properties">
+    <ParamField path="orderVersion" type="ApiVersion[]">
+      Filter by API version
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** `Promise<ReadyToExecutePublicActions>` containing:
+
+<ResponseField name="actions" type="ReadyToExecutePublicAction[]">
+  Array of executable public actions
+</ResponseField>
+
+---
+
+## Complete Workflow Example
+
+Here's a complete example showing the typical order flow:
+
+```typescript
+import { SDK, HashLock, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+// 1. Initialize SDK
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  blockchainProvider: yourProvider
+})
+
+// 2. Get a quote
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.POLYGON,
+  srcTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  dstTokenAddress: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+  amount: '1000000',
+  walletAddress: '0x...',
+  enableEstimate: true
+})
+
+// 3. Create hash lock and order
+const secret = '0x' + '1'.repeat(64)
+const hashLock = HashLock.forSingleFill(secret)
+
+const { order, hash, quoteId } = sdk.createOrder(quote, {
+  walletAddress: '0x...',
+  hashLock,
+  secretHashes: [hashLock.secretHashes[0]]
+})
+
+// 4. Submit the order
+const orderInfo = await sdk.submitOrder(
+  quote.srcChainId,
+  order,
+  quoteId,
+  [hashLock.secretHashes[0]]
+)
+
+console.log('Order submitted:', orderInfo.orderHash)
+
+// 5. Monitor order status
+const status = await sdk.getOrderStatus(orderInfo.orderHash)
+console.log('Order status:', status.status)
+
+// 6. When ready, submit secret
+const readyFills = await sdk.getReadyToAcceptSecretFills(orderInfo.orderHash)
+
+if (readyFills.fills.length > 0) {
+  await sdk.submitSecret(orderInfo.orderHash, secret)
+  console.log('Secret submitted - withdrawal can now occur')
+}
+```

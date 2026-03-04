@@ -1,0 +1,361 @@
+---
+title: 'SDK Config'
+description: 'Configuration parameters for initializing the 1inch Cross-Chain SDK'
+---
+
+The `CrossChainSDKConfigParams` interface defines the configuration options required to initialize the SDK.
+
+## Type Definition
+
+```typescript
+type CrossChainSDKConfigParams = {
+  url: string
+  authKey?: string
+  blockchainProvider?: BlockchainProviderConnector
+  httpProvider?: HttpProviderConnector
+}
+```
+
+## Parameters
+
+<ParamField path="url" type="string" required>
+  The base URL of the 1inch Fusion API endpoint.
+  
+  **Production URL:** `https://api.1inch.dev/fusion-plus`
+  
+  This is the primary endpoint for accessing the 1inch Cross-Chain Fusion protocol.
+</ParamField>
+
+<ParamField path="authKey" type="string">
+  Optional API authentication key for accessing the 1inch Fusion API.
+  
+  While optional, an API key is recommended for:
+  - Higher rate limits
+  - Access to premium features
+  - Production applications
+  
+  You can obtain an API key from the [1inch Developer Portal](https://portal.1inch.dev).
+</ParamField>
+
+<ParamField path="blockchainProvider" type="BlockchainProviderConnector">
+  Optional blockchain provider connector for signing transactions and interacting with EVM networks.
+  
+  **Required for:**
+  - Signing orders with `signOrder()`
+  - Submitting orders with `submitOrder()` (calls `signOrder` internally)
+  - Any operation requiring wallet signatures
+  
+  **Not required for:**
+  - Getting quotes
+  - Querying order status
+  - Read-only operations
+  - Native orders (use `signNativeOrder` instead)
+  
+  The provider must implement the `BlockchainProviderConnector` interface from `@1inch/fusion-sdk`, which includes:
+  - `signTypedData(walletAddress: string, typedData: TypedData): Promise<string>`
+  
+  **Supported providers:**
+  - ethers.js providers (wrapped)
+  - Web3.js providers (wrapped)
+  - Custom implementations
+</ParamField>
+
+<ParamField path="httpProvider" type="HttpProviderConnector">
+  Optional custom HTTP provider for making API requests.
+  
+  By default, the SDK uses its built-in HTTP client. Provide a custom provider if you need:
+  - Custom headers or authentication
+  - Request/response interceptors
+  - Logging and monitoring
+  - Proxy configuration
+  - Custom timeout settings
+  
+  The provider must implement the `HttpProviderConnector` interface from `@1inch/fusion-sdk`.
+</ParamField>
+
+---
+
+## Basic Configuration
+
+Minimal configuration for read-only operations (quotes, status checks):
+
+```typescript
+import { SDK } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus'
+})
+
+// You can now get quotes and check order status
+const quote = await sdk.getQuote({
+  srcChainId: 1,
+  dstChainId: 137,
+  srcTokenAddress: '0x...',
+  dstTokenAddress: '0x...',
+  amount: '1000000',
+  walletAddress: '0x...'
+})
+```
+
+## Configuration with Authentication
+
+Recommended configuration with API key:
+
+```typescript
+import { SDK } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key-here'
+})
+```
+
+## Full Configuration for Order Submission
+
+Complete configuration including blockchain provider for signing and submitting orders:
+
+```typescript
+import { SDK } from '@1inch/cross-chain-sdk'
+import { Web3Like } from '@1inch/fusion-sdk'
+import { ethers } from 'ethers'
+
+// Create an ethers provider and signer
+const provider = new ethers.providers.JsonRpcProvider('https://eth.llamarpc.com')
+const wallet = new ethers.Wallet('your-private-key', provider)
+
+// Wrap as a BlockchainProviderConnector
+const blockchainProvider = new Web3Like(wallet)
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  blockchainProvider
+})
+
+// Now you can submit orders
+const orderInfo = await sdk.submitOrder(
+  srcChainId,
+  order,
+  quoteId,
+  secretHashes
+)
+```
+
+## Configuration with Custom HTTP Provider
+
+Advanced configuration with custom HTTP provider for request logging:
+
+```typescript
+import { SDK, HttpProviderConnector } from '@1inch/cross-chain-sdk'
+
+class LoggingHttpProvider implements HttpProviderConnector {
+  async get(url: string, config?: any): Promise<any> {
+    console.log('GET', url)
+    const response = await fetch(url, {
+      method: 'GET',
+      ...config
+    })
+    return response.json()
+  }
+  
+  async post(url: string, data?: any, config?: any): Promise<any> {
+    console.log('POST', url, data)
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...config?.headers
+      },
+      body: JSON.stringify(data)
+    })
+    return response.json()
+  }
+}
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  httpProvider: new LoggingHttpProvider()
+})
+```
+
+---
+
+## Environment-Specific Configuration
+
+### Development Environment
+
+```typescript
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  // No auth key for testing
+})
+```
+
+### Production Environment
+
+```typescript
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: process.env.ONEINCH_API_KEY,
+  blockchainProvider: productionProvider,
+  httpProvider: customHttpProvider // with monitoring, retries, etc.
+})
+```
+
+---
+
+## BlockchainProviderConnector Examples
+
+### Using ethers.js v5
+
+```typescript
+import { Web3Like } from '@1inch/fusion-sdk'
+import { ethers } from 'ethers'
+
+const provider = new ethers.providers.Web3Provider(window.ethereum)
+const signer = provider.getSigner()
+const blockchainProvider = new Web3Like(signer)
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  blockchainProvider
+})
+```
+
+### Using ethers.js v6
+
+```typescript
+import { Web3Like } from '@1inch/fusion-sdk'
+import { ethers } from 'ethers'
+
+const provider = new ethers.BrowserProvider(window.ethereum)
+const signer = await provider.getSigner()
+const blockchainProvider = new Web3Like(signer)
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  blockchainProvider
+})
+```
+
+### Using WalletConnect
+
+```typescript
+import { Web3Like } from '@1inch/fusion-sdk'
+import { ethers } from 'ethers'
+import { EthereumProvider } from '@walletconnect/ethereum-provider'
+
+const walletConnectProvider = await EthereumProvider.init({
+  projectId: 'your-project-id',
+  chains: [1],
+  showQrModal: true
+})
+
+await walletConnectProvider.connect()
+
+const provider = new ethers.providers.Web3Provider(walletConnectProvider)
+const signer = provider.getSigner()
+const blockchainProvider = new Web3Like(signer)
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  blockchainProvider
+})
+```
+
+### Using Viem
+
+```typescript
+import { Web3Like } from '@1inch/fusion-sdk'
+import { createWalletClient, custom } from 'viem'
+import { mainnet } from 'viem/chains'
+
+const walletClient = createWalletClient({
+  chain: mainnet,
+  transport: custom(window.ethereum)
+})
+
+// Wrap viem client to match BlockchainProviderConnector interface
+class ViemProvider {
+  constructor(private client: typeof walletClient) {}
+  
+  async signTypedData(address: string, typedData: any): Promise<string> {
+    return this.client.signTypedData({
+      account: address as `0x${string}`,
+      ...typedData
+    })
+  }
+}
+
+const blockchainProvider = new ViemProvider(walletClient)
+
+const sdk = new SDK({
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  blockchainProvider
+})
+```
+
+---
+
+## Configuration Best Practices
+
+<Tip>
+**Always use environment variables for sensitive data:**
+
+```typescript
+const sdk = new SDK({
+  url: process.env.FUSION_API_URL || 'https://api.1inch.dev/fusion-plus',
+  authKey: process.env.ONEINCH_API_KEY
+})
+```
+</Tip>
+
+<Warning>
+**Never hardcode private keys or API keys in your source code.** Use environment variables or secure key management systems.
+</Warning>
+
+<Info>
+**For browser applications**, consider using Web3 providers like MetaMask or WalletConnect instead of managing private keys directly:
+
+```typescript
+const provider = new ethers.providers.Web3Provider(window.ethereum)
+const signer = provider.getSigner()
+const blockchainProvider = new Web3Like(signer)
+```
+</Info>
+
+---
+
+## TypeScript Types
+
+The SDK is fully typed. Import types for better IDE support:
+
+```typescript
+import { 
+  SDK, 
+  CrossChainSDKConfigParams,
+  BlockchainProviderConnector,
+  HttpProviderConnector 
+} from '@1inch/cross-chain-sdk'
+
+const config: CrossChainSDKConfigParams = {
+  url: 'https://api.1inch.dev/fusion-plus',
+  authKey: 'your-api-key',
+  blockchainProvider: yourProvider
+}
+
+const sdk = new SDK(config)
+```
+
+---
+
+## Related Documentation
+
+- [SDK Class](/api/sdk) - Main SDK class and methods
+- [Getting Started](/getting-started) - Quick start guide
+- [Authentication](/guides/authentication) - API key setup

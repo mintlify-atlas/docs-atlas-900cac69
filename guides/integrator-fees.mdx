@@ -1,0 +1,327 @@
+---
+title: 'Integrator Fees'
+description: 'Learn how to monetize your integration by charging fees on cross-chain swaps'
+---
+
+Integrator fees allow you to earn revenue from cross-chain swaps performed through your application. Fees are specified in basis points and deducted from the source token amount.
+
+## Overview
+
+The 1inch Cross-Chain SDK supports integrator fees that:
+
+- Are specified in basis points (bps): 1% = 100 bps
+- Are deducted from the source token on the source chain
+- Can be sent to any address you control
+- Are passed during the quote request
+- Work with both EVM and Solana swaps
+
+<Note>
+  Integrator fees are taken from the source amount before the swap, so the user effectively pays the fee in the source token.
+</Note>
+
+## How to Add Integrator Fees
+
+To charge an integrator fee, simply add the `integratorFee` parameter to your `getQuote()` call.
+
+### Basic Example
+
+```typescript
+import { SDK, NetworkEnum, Bps } from '@1inch/cross-chain-sdk'
+
+const integratorFeeReceiver = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' // Your address
+
+const quote = await sdk.getQuote({
+    amount: '10000000',
+    srcChainId: NetworkEnum.POLYGON,
+    dstChainId: NetworkEnum.BINANCE,
+    enableEstimate: true,
+    srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', // USDT
+    dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', // BNB
+    walletAddress,
+    integratorFee: {
+        receiver: integratorFeeReceiver, // Address to receive the fee
+        value: new Bps(100n) // 1% fee (100 basis points)
+    }
+})
+```
+
+<Warning>
+  The `value` must be a `Bps` instance created with a BigInt. For example: `new Bps(100n)` for 1%.
+</Warning>
+
+## Fee Calculation
+
+Fees are calculated using basis points:
+
+- **1 bps** = 0.01% = 0.0001
+- **10 bps** = 0.1% = 0.001
+- **100 bps** = 1% = 0.01
+- **1000 bps** = 10% = 0.1
+- **10000 bps** = 100% = 1.0
+
+### Example Calculations
+
+<CodeGroup>
+```typescript 0.5% Fee (50 bps)
+const quote = await sdk.getQuote({
+    amount: '1000000000', // 1000 USDT
+    // ... other params
+    integratorFee: {
+        receiver: feeReceiver,
+        value: new Bps(50n) // 0.5% fee
+    }
+})
+// Fee collected: 5 USDT (0.5% of 1000)
+// Amount swapped: 995 USDT
+```
+
+```typescript 1% Fee (100 bps)
+const quote = await sdk.getQuote({
+    amount: '1000000000', // 1000 USDT
+    // ... other params
+    integratorFee: {
+        receiver: feeReceiver,
+        value: new Bps(100n) // 1% fee
+    }
+})
+// Fee collected: 10 USDT (1% of 1000)
+// Amount swapped: 990 USDT
+```
+
+```typescript 2.5% Fee (250 bps)
+const quote = await sdk.getQuote({
+    amount: '1000000000', // 1000 USDT
+    // ... other params
+    integratorFee: {
+        receiver: feeReceiver,
+        value: new Bps(250n) // 2.5% fee
+    }
+})
+// Fee collected: 25 USDT (2.5% of 1000)
+// Amount swapped: 975 USDT
+```
+</CodeGroup>
+
+## Complete Example with Fee
+
+<CodeGroup>
+```typescript EVM to EVM with Fee
+import {
+    HashLock,
+    NetworkEnum,
+    OrderStatus,
+    PresetEnum,
+    PrivateKeyProviderConnector,
+    SDK,
+    Bps
+} from '@1inch/cross-chain-sdk'
+import Web3 from 'web3'
+import { randomBytes } from 'node:crypto'
+
+const privateKey = '0x...'
+const rpc = 'https://ethereum-rpc.publicnode.com'
+const authKey = 'auth-key'
+const source = 'sdk-tutorial'
+
+// Your fee collection address
+const integratorFeeReceiver = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+
+const web3 = new Web3(rpc)
+const walletAddress = web3.eth.accounts.privateKeyToAccount(privateKey).address
+
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey,
+    blockchainProvider: new PrivateKeyProviderConnector(privateKey, web3)
+})
+
+async function main(): Promise<void> {
+    // Get quote WITH integrator fee
+    const quote = await sdk.getQuote({
+        amount: '10000000',
+        srcChainId: NetworkEnum.POLYGON,
+        dstChainId: NetworkEnum.BINANCE,
+        enableEstimate: true,
+        srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+        dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        walletAddress,
+        integratorFee: {
+            receiver: integratorFeeReceiver,
+            value: new Bps(100n) // 1% fee
+        }
+    })
+
+    const preset = PresetEnum.fast
+
+    const secrets = Array.from({
+        length: quote.presets[preset].secretsCount
+    }).map(() => '0x' + randomBytes(32).toString('hex'))
+
+    const hashLock =
+        secrets.length === 1
+            ? HashLock.forSingleFill(secrets[0])
+            : HashLock.forMultipleFills(HashLock.getMerkleLeaves(secrets))
+
+    const secretHashes = secrets.map((s) => HashLock.hashSecret(s))
+
+    const { hash, quoteId, order } = await sdk.createOrder(quote, {
+        walletAddress,
+        hashLock,
+        preset,
+        source,
+        secretHashes
+    })
+
+    console.log({ hash }, 'order created with integrator fee')
+
+    // Rest of the swap flow remains the same
+    await sdk.submitOrder(quote.srcChainId, order, quoteId, secretHashes)
+    
+    // ... secret submission and monitoring
+}
+
+main()
+```
+</CodeGroup>
+
+## Fee Receiver Address
+
+The fee receiver address:
+
+- Must be a valid address on the **source chain**
+- Can be any address you control
+- Receives the fee in the **source token**
+- Is typically your company wallet or treasury address
+
+<Tabs>
+  <Tab title="EVM Chains">
+    For EVM chains, use a standard hex address:
+
+    ```typescript
+    const integratorFeeReceiver = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+
+    integratorFee: {
+        receiver: integratorFeeReceiver,
+        value: new Bps(100n)
+    }
+    ```
+  </Tab>
+
+  <Tab title="Solana">
+    For Solana as source chain, use a Solana address:
+
+    ```typescript
+    const integratorFeeReceiver = '93FP8NG2JrScb9xzNsJrzAze8gJJtr1TgQWUCHDgP3BW'
+
+    integratorFee: {
+        receiver: integratorFeeReceiver,
+        value: new Bps(100n)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Recommended Fee Amounts
+
+Common integrator fee amounts:
+
+| Fee % | Basis Points | Use Case |
+|-------|-------------|----------|
+| 0.1% | 10 bps | High-volume integrations |
+| 0.25% | 25 bps | Competitive consumer apps |
+| 0.5% | 50 bps | Standard consumer apps |
+| 1% | 100 bps | Premium services |
+| 2% | 200 bps | White-label solutions |
+
+<Note>
+  Consider your users and market when setting fees. Higher fees may reduce conversion rates, while lower fees maximize volume.
+</Note>
+
+## Fee Collection
+
+Fees are automatically collected during the swap:
+
+1. User approves the full amount (including fee) to the Limit Order Protocol
+2. The SDK deducts the integrator fee from the source amount
+3. The fee is sent to your receiver address on the source chain
+4. The remaining amount is swapped cross-chain
+
+```typescript
+// Example: User wants to swap 100 USDT with 1% integrator fee
+// - User approves: 100 USDT
+// - Integrator receives: 1 USDT (on source chain)
+// - Amount swapped: 99 USDT → destination token
+```
+
+## Checking Fee in Quote Response
+
+The quote response includes fee information:
+
+```typescript
+const quote = await sdk.getQuote({
+    amount: '10000000',
+    // ... other params
+    integratorFee: {
+        receiver: integratorFeeReceiver,
+        value: new Bps(100n)
+    }
+})
+
+// Quote includes fee calculation
+console.log('Source amount:', quote.srcTokenAmount)
+console.log('Fee amount:', /* calculated from srcTokenAmount * fee bps */)
+```
+
+## Best Practices
+
+<Note>
+  **Transparency**: Clearly display the integrator fee to users in your UI. Show the fee amount and percentage.
+</Note>
+
+<Note>
+  **Competitive**: Research competitor fees to ensure your rates are competitive while maintaining profitability.
+</Note>
+
+<Note>
+  **Testing**: Test with small amounts first to ensure fees are calculated and collected correctly.
+</Note>
+
+<Warning>
+  **Don't forget BigInt**: Always use BigInt syntax for the fee value: `new Bps(100n)` not `new Bps(100)`.
+</Warning>
+
+## Error Handling
+
+Common errors when implementing fees:
+
+```typescript
+// ❌ Wrong: Missing BigInt suffix
+integratorFee: {
+    receiver: feeReceiver,
+    value: new Bps(100) // Error: not a BigInt
+}
+
+// ✅ Correct: With BigInt suffix
+integratorFee: {
+    receiver: feeReceiver,
+    value: new Bps(100n) // Correct
+}
+
+// ❌ Wrong: Invalid receiver address
+integratorFee: {
+    receiver: 'invalid-address',
+    value: new Bps(100n)
+}
+
+// ✅ Correct: Valid EVM address
+integratorFee: {
+    receiver: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+    value: new Bps(100n)
+}
+```
+
+## Next Steps
+
+- Learn about [order tracking](/guides/order-tracking) to monitor your fee-earning swaps
+- Explore [EVM to EVM swaps](/guides/evm-to-evm) for the complete swap flow
+- See [native assets](/guides/native-assets) for handling native token swaps with fees

@@ -1,0 +1,306 @@
+---
+title: Submit Order
+description: Submit orders to the 1inch relayer network
+---
+
+## Overview
+
+The SDK provides two methods for submitting orders to the relayer: `submitOrder` for standard orders and `submitNativeOrder` for orders involving native assets (ETH, MATIC, etc.). Both methods handle signing and submission to the relayer network.
+
+## submitOrder
+
+Submit a standard ERC-20 token order to the relayer.
+
+### Method Signature
+
+```typescript
+async submitOrder(
+  srcChainId: SupportedChain,
+  order: EvmCrossChainOrder,
+  quoteId: string,
+  secretHashes: string[]
+): Promise<OrderInfo>
+```
+
+### Parameters
+
+<ParamField path="srcChainId" type="SupportedChain" required>
+  The source chain ID where the order originates
+</ParamField>
+
+<ParamField path="order" type="EvmCrossChainOrder" required>
+  The EVM cross-chain order instance from `createOrder`
+</ParamField>
+
+<ParamField path="quoteId" type="string" required>
+  The quote ID from the prepared order
+</ParamField>
+
+<ParamField path="secretHashes" type="string[]" required>
+  Array of secret hashes for the order. Must match the order's hash lock configuration
+</ParamField>
+
+### Returns
+
+<ResponseField name="OrderInfo" type="object">
+  <ResponseField name="order" type="LimitOrderV4Struct">
+    The order structure submitted to the relayer
+  </ResponseField>
+  
+  <ResponseField name="signature" type="string">
+    The EIP-712 signature of the order
+  </ResponseField>
+  
+  <ResponseField name="quoteId" type="string">
+    The quote ID associated with the order
+  </ResponseField>
+  
+  <ResponseField name="orderHash" type="string">
+    The unique hash identifying the order
+  </ResponseField>
+  
+  <ResponseField name="extension" type="string">
+    Encoded extension data containing escrow parameters
+  </ResponseField>
+</ResponseField>
+
+## submitNativeOrder
+
+Submit an order involving native assets (ETH, MATIC, etc.). Native orders require on-chain submission in addition to relayer submission.
+
+### Method Signature
+
+```typescript
+async submitNativeOrder(
+  srcChainId: SupportedChain,
+  order: EvmCrossChainOrder,
+  maker: EvmAddress,
+  quoteId: string,
+  secretHashes: string[]
+): Promise<OrderInfo>
+```
+
+### Parameters
+
+<ParamField path="srcChainId" type="SupportedChain" required>
+  The source chain ID where the order originates
+</ParamField>
+
+<ParamField path="order" type="EvmCrossChainOrder" required>
+  The EVM cross-chain order instance created for native assets
+</ParamField>
+
+<ParamField path="maker" type="EvmAddress" required>
+  The maker's address (required for native order signatures)
+</ParamField>
+
+<ParamField path="quoteId" type="string" required>
+  The quote ID from the prepared order
+</ParamField>
+
+<ParamField path="secretHashes" type="string[]" required>
+  Array of secret hashes for the order
+</ParamField>
+
+### Returns
+
+Returns the same `OrderInfo` structure as `submitOrder`.
+
+## Differences Between Methods
+
+| Feature | submitOrder | submitNativeOrder |
+|---------|-------------|-------------------|
+| Asset Type | ERC-20 tokens | Native assets (ETH, MATIC, etc.) |
+| Signature Type | EIP-712 typed data signature | Native signature |
+| Blockchain Provider | Required in SDK config | Not required |
+| On-chain Submission | Not needed | Required via `NativeOrderFactory.create` |
+| Maker Parameter | From order | Explicitly provided |
+
+## Example Usage
+
+<Tabs>
+  <Tab title="Standard Order">
+    ```typescript
+    import { SDK, HashLock } from '@1inch/cross-chain-sdk'
+
+    const sdk = new SDK({
+      url: 'https://api.1inch.dev/fusion-plus',
+      authKey: 'your-auth-key',
+      blockchainProvider: yourProvider // Required for signing
+    })
+
+    // Create order
+    const { order, quoteId } = sdk.createOrder(quote, params)
+
+    // Submit to relayer
+    const orderInfo = await sdk.submitOrder(
+      1, // Ethereum
+      order,
+      quoteId,
+      params.secretHashes
+    )
+
+    console.log('Order submitted:', orderInfo.orderHash)
+    console.log('Signature:', orderInfo.signature)
+    ```
+  </Tab>
+  
+  <Tab title="Native Order">
+    ```typescript
+    import { SDK, EvmAddress } from '@1inch/cross-chain-sdk'
+
+    const sdk = new SDK({
+      url: 'https://api.1inch.dev/fusion-plus',
+      authKey: 'your-auth-key'
+      // blockchainProvider not required for native orders
+    })
+
+    // Create native order
+    const { order, quoteId } = sdk.createOrder(quote, params)
+    const makerAddress = EvmAddress.fromString('0xYourAddress')
+
+    // Submit to relayer
+    const orderInfo = await sdk.submitNativeOrder(
+      1, // Ethereum
+      order,
+      makerAddress,
+      quoteId,
+      params.secretHashes
+    )
+
+    // IMPORTANT: Also submit on-chain
+    // await nativeOrderFactory.create(orderInfo.order, orderInfo.signature)
+
+    console.log('Native order submitted:', orderInfo.orderHash)
+    ```
+  </Tab>
+  
+  <Tab title="Complete Flow">
+    ```typescript
+    import { SDK, HashLock } from '@1inch/cross-chain-sdk'
+
+    const sdk = new SDK({
+      url: 'https://api.1inch.dev/fusion-plus',
+      authKey: 'your-auth-key',
+      blockchainProvider: yourProvider
+    })
+
+    // 1. Get quote
+    const quote = await sdk.getQuote({
+      srcChainId: 1,
+      dstChainId: 137,
+      srcTokenAddress: '0x...',
+      dstTokenAddress: '0x...',
+      amount: '1000000000000000000',
+      walletAddress: '0xYourAddress',
+      enableEstimate: true
+    })
+
+    // 2. Create secrets and hash lock
+    const secrets = HashLock.generateSecrets()
+    const hashLock = HashLock.forMultipleFills(secrets)
+
+    // 3. Create order
+    const { order, quoteId } = sdk.createOrder(quote, {
+      walletAddress: '0xYourAddress',
+      hashLock,
+      secretHashes: secrets.map(s => s.hash)
+    })
+
+    // 4. Submit order
+    const orderInfo = await sdk.submitOrder(
+      quote.srcChainId,
+      order,
+      quoteId,
+      secrets.map(s => s.hash)
+    )
+
+    // 5. Track order status
+    console.log('Order Hash:', orderInfo.orderHash)
+    ```
+  </Tab>
+</Tabs>
+
+## RelayerRequest Types
+
+The SDK internally uses different request types for EVM and Solana orders:
+
+### RelayerRequestEvm
+
+```typescript
+type RelayerRequestEvm = {
+  order: LimitOrderV4Struct
+  signature: string
+  quoteId: string
+  extension: string
+  srcChainId: SupportedChain
+  secretHashes?: string[] // Optional for single-fill orders
+}
+```
+
+### RelayerRequestSvm
+
+```typescript
+type RelayerRequestSvm = {
+  order: SolanaOrderJSON
+  auctionOrderHash: string
+  quoteId: string
+  secretHashes?: string[] // Optional for single-fill orders
+}
+```
+
+## Error Handling
+
+```typescript
+try {
+  const orderInfo = await sdk.submitOrder(
+    srcChainId,
+    order,
+    quoteId,
+    secretHashes
+  )
+} catch (error) {
+  if (error.message.includes('blockchainProvider has not set')) {
+    console.error('Blockchain provider required for submitOrder')
+  } else if (error.message.includes('secretHashes')) {
+    console.error('Invalid number of secret hashes')
+  } else {
+    console.error('Order submission failed:', error)
+  }
+}
+```
+
+## Secret Hash Validation
+
+Both methods validate secret hashes:
+
+- **Single-fill orders** (`multipleFillsAllowed: false`): Only 1 secret hash allowed
+- **Multi-fill orders** (`multipleFillsAllowed: true`): Number of hashes must equal `hashLock.getPartsCount() + 1`
+
+```typescript
+// Multi-fill order example
+const secrets = HashLock.generateSecrets(3) // Generates 3 secrets
+const hashLock = HashLock.forMultipleFills(secrets)
+
+// This will succeed
+await sdk.submitOrder(chainId, order, quoteId, secrets.map(s => s.hash))
+
+// This will throw an error
+await sdk.submitOrder(chainId, order, quoteId, ['single-hash'])
+```
+
+## Notes
+
+- `submitOrder` requires `blockchainProvider` in SDK configuration for signing
+- `submitNativeOrder` generates signatures internally and doesn't require a provider
+- Native orders must be submitted both off-chain (to relayer) and on-chain
+- The `extension` field in `OrderInfo` contains encoded escrow parameters
+- For single-fill orders, `secretHashes` can be a single-element array
+- Signature format differs between standard and native orders
+
+## Related Methods
+
+- [Create Order](/api/orders/create-order) - Create an order before submission
+- [Announce Order](/api/orders/announce-order) - Announce Solana orders
+- [Order Status](/api/orders/order-status) - Check order status after submission
+- [Sign Order](/api/orders/sign-order) - Manual order signing

@@ -1,122 +1,139 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "1inch Cross-Chain SDK",
+  "theme": "sequoia",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#1b314f",
+    "light": "#2e5c8a",
+    "dark": "#0f1a2e"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/1inch/cross-chain-sdk"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/1inch/cross-chain-sdk"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/atomic-swaps",
+              "concepts/hash-locks",
+              "concepts/secrets",
+              "concepts/presets"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Guides",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "guides/evm-to-evm",
+              "guides/solana-to-evm",
+              "guides/evm-to-solana",
+              "guides/native-assets",
+              "guides/integrator-fees",
+              "guides/order-tracking"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Advanced",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "advanced/websocket",
+              "advanced/custom-presets",
+              "advanced/event-decoding",
+              "advanced/order-cancellation"
+            ]
+          },
+          {
+            "group": "Migration",
+            "pages": [
+              "migration/v2-guide"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "SDK Class",
             "pages": [
-              "api-reference/introduction"
+              "api/sdk",
+              "api/sdk-config"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Orders",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/orders/create-order",
+              "api/orders/submit-order",
+              "api/orders/order-status",
+              "api/orders/order-types"
+            ]
+          },
+          {
+            "group": "Quotes",
+            "pages": [
+              "api/quotes/get-quote",
+              "api/quotes/quote-params",
+              "api/quotes/quote-response"
+            ]
+          },
+          {
+            "group": "Secrets",
+            "pages": [
+              "api/secrets/hash-lock",
+              "api/secrets/submit-secret",
+              "api/secrets/ready-to-accept"
+            ]
+          },
+          {
+            "group": "WebSocket",
+            "pages": [
+              "api/websocket/websocket-api",
+              "api/websocket/order-events",
+              "api/websocket/rpc-methods"
+            ]
+          },
+          {
+            "group": "Addresses",
+            "pages": [
+              "api/addresses/evm-address",
+              "api/addresses/solana-address"
+            ]
+          },
+          {
+            "group": "Networks",
+            "pages": [
+              "api/networks/supported-chains",
+              "api/networks/network-enum"
+            ]
+          },
+          {
+            "group": "Connectors",
+            "pages": [
+              "api/connectors/private-key",
+              "api/connectors/blockchain-provider"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

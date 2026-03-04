@@ -1,0 +1,91 @@
+---
+title: 'Introduction'
+description: 'Learn about the 1inch Cross-Chain SDK for atomic cross-chain token swaps'
+---
+
+## What is the 1inch Cross-Chain SDK?
+
+The 1inch Cross-Chain SDK enables developers to create **atomic cross-chain swaps** through the 1inch Fusion+ protocol. It provides a TypeScript/JavaScript interface for executing trustless token swaps between different blockchain networks without relying on bridges or wrapped tokens.
+
+### How It Works
+
+The SDK implements atomic swaps using:
+
+- **Hash Time-Locked Contracts (HTLCs)**: Cryptographic hash locks ensure that swaps either complete fully or fail safely
+- **Trustless Escrows**: Smart contracts on both source and destination chains hold funds securely
+- **Secret Management**: Users generate and share secrets to unlock funds after escrows are deployed
+- **1inch Fusion+ Protocol**: Orders are matched and executed through 1inch's decentralized resolver network
+
+## Supported Chains
+
+The SDK supports cross-chain swaps between:
+
+### EVM Chains
+- Ethereum
+- Polygon
+- Arbitrum
+- Optimism
+- Avalanche
+- BNB Chain (Binance Smart Chain)
+- Base
+- Gnosis
+- Fantom
+- zkSync Era
+
+### Non-EVM Chains
+- Solana
+
+You can swap between any supported EVM chain, from EVM to Solana, or from Solana to EVM.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Atomic Swaps" icon="lock">
+    Cryptographically guaranteed all-or-nothing execution using hash locks
+  </Card>
+  <Card title="No Bridges" icon="bridge">
+    Direct chain-to-chain swaps without intermediary wrapped tokens
+  </Card>
+  <Card title="TypeScript Support" icon="code">
+    Fully typed SDK with comprehensive TypeScript definitions
+  </Card>
+  <Card title="Integrator Fees" icon="coins">
+    Built-in support for charging fees as an integrator (in basis points)
+  </Card>
+  <Card title="Multiple Presets" icon="gauge">
+    Choose between fast, medium, and slow execution speeds
+  </Card>
+  <Card title="Native Assets" icon="ethereum">
+    Support for both ERC-20 tokens and native assets (ETH, BNB, AVAX, etc.)
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+- **DeFi Applications**: Enable users to access liquidity across multiple chains
+- **Cross-Chain DEX Aggregators**: Build interfaces for multi-chain token swaps
+- **Portfolio Management**: Rebalance assets across different networks
+- **Payment Solutions**: Accept payments on one chain and receive on another
+
+## Getting Started
+
+Ready to integrate cross-chain swaps into your application?
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the SDK and configure your development environment
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Execute your first cross-chain swap in minutes
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [1inch Developer Portal](https://portal.1inch.dev/documentation/apis/swap/fusion-plus/introduction) - Official API documentation
+- [WebSocket API](https://github.com/1inch/cross-chain-sdk/tree/master/src/ws-api) - Real-time order updates
+- [GitHub Repository](https://github.com/1inch/cross-chain-sdk) - Source code and examples
+
+<Note>
+  The SDK requires an API key from the [1inch Developer Portal](https://portal.1inch.dev). You can get started for free.
+</Note>

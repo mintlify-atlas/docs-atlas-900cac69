@@ -1,0 +1,302 @@
+---
+title: PrivateKeyProviderConnector
+description: Blockchain provider connector using private keys
+---
+
+## Overview
+
+The `PrivateKeyProviderConnector` enables the SDK to sign orders using a private key. This is required for creating and submitting cross-chain orders.
+
+## Class Definition
+
+```typescript
+class PrivateKeyProviderConnector implements BlockchainProviderConnector {
+  constructor(privateKey: string, web3Provider: Web3Provider)
+  
+  signTypedData(walletAddress: string, typedData: EIP712TypedData): Promise<string>
+}
+```
+
+## Constructor
+
+<ParamField path="privateKey" type="string" required>
+  EVM private key (hex string with '0x' prefix)
+  
+  The private key used to sign orders. Must correspond to the wallet address making swaps.
+</ParamField>
+
+<ParamField path="web3Provider" type="Web3Provider" required>
+  Web3 provider instance for blockchain interaction
+  
+  Supports:
+  - Web3.js (`Web3` instance)
+  - Ethers.js v5/v6 (`JsonRpcProvider`)
+  - Custom providers implementing the required interface
+</ParamField>
+
+## Web3.js Integration
+
+### Setup
+
+```typescript
+import { SDK, PrivateKeyProviderConnector } from '@1inch/cross-chain-sdk'
+import Web3 from 'web3'
+
+const privateKey = '0x...' // Your private key
+const rpc = 'https://ethereum-rpc.publicnode.com'
+const authKey = 'your-auth-key'
+
+// Create Web3 instance
+const web3 = new Web3(rpc)
+
+// Create connector
+const connector = new PrivateKeyProviderConnector(privateKey, web3)
+
+// Initialize SDK
+const sdk = new SDK({
+  url: 'https://api.1inch.com/fusion-plus',
+  authKey,
+  blockchainProvider: connector
+})
+```
+
+### Get Wallet Address
+
+```typescript
+const walletAddress = web3.eth.accounts.privateKeyToAccount(privateKey).address
+console.log(`Wallet: ${walletAddress}`)
+```
+
+### Complete Example
+
+```typescript
+import { SDK, PrivateKeyProviderConnector, NetworkEnum, HashLock, PresetEnum } from '@1inch/cross-chain-sdk'
+import Web3 from 'web3'
+import { randomBytes } from 'crypto'
+
+const privateKey = process.env.PRIVATE_KEY || '0x...'
+const web3 = new Web3('https://ethereum-rpc.publicnode.com')
+const walletAddress = web3.eth.accounts.privateKeyToAccount(privateKey).address
+
+const sdk = new SDK({
+  url: 'https://api.1inch.com/fusion-plus',
+  authKey: process.env.AUTH_KEY,
+  blockchainProvider: new PrivateKeyProviderConnector(privateKey, web3)
+})
+
+// Get quote
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.POLYGON,
+  dstChainId: NetworkEnum.BINANCE,
+  srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+  amount: '10000000',
+  walletAddress,
+  enableEstimate: true
+})
+
+// Generate secret
+const secret = '0x' + randomBytes(32).toString('hex')
+const hashLock = HashLock.forSingleFill(secret)
+const secretHashes = [HashLock.hashSecret(secret)]
+
+// Create order (will use private key to sign)
+const { hash, order, quoteId } = await sdk.createOrder(quote, {
+  walletAddress,
+  hashLock,
+  preset: PresetEnum.fast,
+  secretHashes
+})
+
+// Submit order (signature created automatically)
+await sdk.submitOrder(quote.srcChainId, order, quoteId, secretHashes)
+
+console.log(`Order submitted: ${hash}`)
+```
+
+## Ethers.js Integration
+
+### Ethers v6
+
+```typescript
+import { SDK, PrivateKeyProviderConnector } from '@1inch/cross-chain-sdk'
+import { JsonRpcProvider, Wallet } from 'ethers'
+
+const privateKey = '0x...'
+const rpc = 'https://ethereum-rpc.publicnode.com'
+
+// Create provider
+const provider = new JsonRpcProvider(rpc)
+const wallet = new Wallet(privateKey, provider)
+
+// Create connector with ethers v6
+const ethersProviderConnector = {
+  eth: {
+    call(transactionConfig: any): Promise<string> {
+      return provider.call(transactionConfig)
+    }
+  },
+  extend(): void {}
+}
+
+const connector = new PrivateKeyProviderConnector(
+  privateKey,
+  ethersProviderConnector
+)
+
+// Initialize SDK
+const sdk = new SDK({
+  url: 'https://api.1inch.com/fusion-plus',
+  authKey: 'your-auth-key',
+  blockchainProvider: connector
+})
+
+console.log(`Wallet: ${wallet.address}`)
+```
+
+### Ethers v5
+
+```typescript
+import { ethers } from 'ethers' // v5
+
+const provider = new ethers.providers.JsonRpcProvider(rpc)
+const wallet = new ethers.Wallet(privateKey, provider)
+
+const ethersProviderConnector = {
+  eth: {
+    call(transactionConfig: any): Promise<string> {
+      return provider.call(transactionConfig)
+    }
+  },
+  extend(): void {}
+}
+
+const connector = new PrivateKeyProviderConnector(
+  privateKey,
+  ethersProviderConnector
+)
+```
+
+## Security Best Practices
+
+<Warning>
+**Never commit private keys to version control or expose them in client-side code.**
+</Warning>
+
+### Use Environment Variables
+
+```typescript
+// .env file
+PRIVATE_KEY=0x...
+AUTH_KEY=your-auth-key
+RPC_URL=https://...
+
+// In code
+import dotenv from 'dotenv'
+dotenv.config()
+
+const privateKey = process.env.PRIVATE_KEY
+if (!privateKey) {
+  throw new Error('PRIVATE_KEY not set')
+}
+
+const connector = new PrivateKeyProviderConnector(
+  privateKey,
+  web3
+)
+```
+
+### Server-Side Only
+
+```typescript
+// ✅ Good: Server-side Node.js
+const connector = new PrivateKeyProviderConnector(
+  process.env.PRIVATE_KEY,
+  web3
+)
+
+// ❌ Bad: Browser/client-side
+// Never expose private keys in browser environments
+```
+
+### Key Rotation
+
+```typescript
+// Implement key rotation for production systems
+class SecureKeyManager {
+  private currentKeyIndex = 0
+  private keys: string[] = [
+    process.env.PRIVATE_KEY_1,
+    process.env.PRIVATE_KEY_2,
+    process.env.PRIVATE_KEY_3
+  ].filter(Boolean) as string[]
+  
+  getCurrentKey(): string {
+    return this.keys[this.currentKeyIndex]
+  }
+  
+  rotateKey(): void {
+    this.currentKeyIndex = (this.currentKeyIndex + 1) % this.keys.length
+  }
+  
+  getConnector(web3: any): PrivateKeyProviderConnector {
+    return new PrivateKeyProviderConnector(this.getCurrentKey(), web3)
+  }
+}
+
+const keyManager = new SecureKeyManager()
+const connector = keyManager.getConnector(web3)
+```
+
+## Read-Only Mode
+
+If you don't need to create orders, you can initialize the SDK without a blockchain provider:
+
+```typescript
+const sdk = new SDK({
+  url: 'https://api.1inch.com/fusion-plus',
+  authKey: 'your-auth-key'
+  // No blockchainProvider - read-only mode
+})
+
+// Can get quotes, check status, etc.
+const quote = await sdk.getQuote({ /* params */ })
+const status = await sdk.getOrderStatus(orderHash)
+
+// Cannot create orders
+// await sdk.createOrder(...) // Would fail
+```
+
+## Methods
+
+### signTypedData
+
+Signs EIP-712 typed data (used internally for order signatures).
+
+```typescript
+async signTypedData(
+  walletAddress: string,
+  typedData: EIP712TypedData
+): Promise<string>
+```
+
+<ParamField path="walletAddress" type="string" required>
+  Address of the wallet signing the data
+</ParamField>
+
+<ParamField path="typedData" type="EIP712TypedData" required>
+  EIP-712 typed data structure to sign
+</ParamField>
+
+**Returns:** Signature as hex string
+
+<Info>
+This method is called automatically by the SDK when creating orders. You typically don't need to call it directly.
+</Info>
+
+## Related
+
+- [BlockchainProviderConnector](/api/connectors/blockchain-provider) - Provider interface
+- [SDK Config](/api/sdk-config) - SDK configuration options
+- [createOrder](/api/orders/create-order) - Creating orders (requires signing)
+- [submitOrder](/api/orders/submit-order) - Submitting signed orders

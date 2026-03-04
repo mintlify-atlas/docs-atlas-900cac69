@@ -1,0 +1,365 @@
+---
+title: WebSocketApi
+description: Real-time order tracking with WebSocket subscriptions
+---
+
+## Overview
+
+The `WebSocketApi` class provides real-time event streaming for cross-chain orders, allowing you to monitor order lifecycle, fills, cancellations, and other events through WebSocket connections.
+
+## Constructor
+
+```typescript
+class WebSocketApi {
+  constructor(config: WebSocketConfig | WsProviderConnector)
+  static new(config: WebSocketConfig): WebSocketApi
+}
+```
+
+### Configuration
+
+<ParamField path="config" type="WebSocketConfig">
+  WebSocket configuration object
+  
+  <Expandable title="WebSocketConfig properties">
+    <ParamField path="url" type="string" required>
+      WebSocket URL (e.g., `wss://api.1inch.com/fusion-plus/ws`)
+    </ParamField>
+    
+    <ParamField path="authKey" type="string">
+      API authentication key
+    </ParamField>
+    
+    <ParamField path="lazyInit" type="boolean">
+      If `true`, connection is not opened until `init()` is called. Default: `false`
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Creating WebSocket Connections
+
+### Basic Connection
+
+```typescript
+import { WebSocketApi } from '@1inch/cross-chain-sdk'
+
+const ws = new WebSocketApi({
+  url: 'wss://api.1inch.com/fusion-plus/ws',
+  authKey: 'your-auth-key'
+})
+
+// Connection opens automatically
+ws.onOpen(() => {
+  console.log('WebSocket connected')
+})
+```
+
+### Using Static Constructor
+
+```typescript
+const ws = WebSocketApi.new({
+  url: 'wss://api.1inch.com/fusion-plus/ws',
+  authKey: 'your-auth-key'
+})
+```
+
+### Lazy Initialization
+
+```typescript
+const ws = new WebSocketApi({
+  url: 'wss://api.1inch.com/fusion-plus/ws',
+  authKey: 'your-auth-key',
+  lazyInit: true // Don't connect immediately
+})
+
+// Connect when ready
+ws.init()
+```
+
+## Event Subscriptions
+
+### Order Events
+
+Subscribe to all order events:
+
+```typescript
+ws.order.onOrder((event) => {
+  console.log('Order event:', event.event)
+  console.log('Event data:', event.data)
+  
+  switch (event.event) {
+    case 'order_created':
+      console.log('New order created')
+      break
+    case 'order_filled':
+      console.log('Order filled')
+      break
+    case 'order_cancelled':
+      console.log('Order cancelled')
+      break
+  }
+})
+```
+
+### Specific Event Types
+
+```typescript
+// Order created
+ws.order.onOrderCreated((data) => {
+  console.log('Order created:', data.orderHash)
+  console.log('Quote ID:', data.quoteId)
+})
+
+// Order filled
+ws.order.onOrderFilled((data) => {
+  console.log('Order filled:', data.orderHash)
+})
+
+// Order filled partially
+ws.order.onOrderFilledPartially((data) => {
+  console.log('Partial fill:', data.orderHash)
+  console.log('Remaining:', data.remainingMakerAmount)
+})
+
+// Order cancelled
+ws.order.onOrderCancelled((data) => {
+  console.log('Order cancelled:', data.orderHash)
+})
+
+// Order invalid
+ws.order.onOrderInvalid((data) => {
+  console.log('Order invalid:', data.orderHash)
+})
+
+// Balance change
+ws.order.onOrderBalanceChange((data) => {
+  console.log('Balance changed:', data.balance)
+})
+
+// Allowance change
+ws.order.onOrderAllowanceChange((data) => {
+  console.log('Allowance changed:', data.allowance)
+})
+```
+
+## Connection Management
+
+### Lifecycle Events
+
+```typescript
+// Connection opened
+ws.onOpen(() => {
+  console.log('WebSocket connected')
+})
+
+// Connection closed
+ws.onClose(() => {
+  console.log('WebSocket disconnected')
+})
+
+// Connection error
+ws.onError((error) => {
+  console.error('WebSocket error:', error)
+})
+
+// Message received (raw)
+ws.onMessage((data) => {
+  console.log('Raw message:', data)
+})
+```
+
+### Manual Control
+
+```typescript
+// Send custom message
+ws.send({ type: 'custom', payload: {...} })
+
+// Close connection
+ws.close()
+```
+
+## RPC Methods
+
+### Ping
+
+Health check the connection:
+
+```typescript
+// Send ping
+ws.rpc.ping()
+
+// Listen for pong response
+ws.rpc.onPong((timestamp) => {
+  console.log('Pong received:', timestamp)
+})
+```
+
+### Get Active Orders
+
+```typescript
+// Request active orders
+ws.rpc.getActiveOrders()
+
+// Handle response
+ws.rpc.onGetActiveOrders((orders) => {
+  console.log(`${orders.items.length} active orders`)
+  orders.items.forEach(order => {
+    console.log(`  ${order.orderHash}`)
+  })
+})
+```
+
+### Get Allowed Methods
+
+```typescript
+// Request allowed methods
+ws.rpc.getAllowedMethods()
+
+// Handle response
+ws.rpc.onGetAllowedMethods((methods) => {
+  console.log('Allowed methods:', methods)
+})
+```
+
+## Complete Example
+
+```typescript
+import { WebSocketApi, OrderStatus } from '@1inch/cross-chain-sdk'
+
+// Create WebSocket connection
+const ws = new WebSocketApi({
+  url: 'wss://api.1inch.com/fusion-plus/ws',
+  authKey: 'your-auth-key'
+})
+
+// Set up connection handlers
+ws.onOpen(() => {
+  console.log('Connected to 1inch WebSocket')
+  
+  // Ping server
+  ws.rpc.ping()
+})
+
+ws.onError((error) => {
+  console.error('WebSocket error:', error)
+})
+
+ws.onClose(() => {
+  console.log('WebSocket connection closed')
+})
+
+// Subscribe to order events
+ws.order.onOrderCreated((data) => {
+  console.log(`New order: ${data.orderHash}`)
+  console.log(`  Source chain: ${data.srcChainId}`)
+  console.log(`  Destination chain: ${data.dstChainId}`)
+})
+
+ws.order.onOrderFilled((data) => {
+  console.log(`Order filled: ${data.orderHash}`)
+})
+
+ws.order.onOrderFilledPartially((data) => {
+  console.log(`Partial fill: ${data.orderHash}`)
+  console.log(`  Remaining: ${data.remainingMakerAmount}`)
+})
+
+ws.order.onOrderCancelled((data) => {
+  console.log(`Order cancelled: ${data.orderHash}`)
+})
+
+// Handle RPC responses
+ws.rpc.onPong((timestamp) => {
+  console.log('Server is alive:', timestamp)
+})
+
+ws.rpc.onGetActiveOrders((response) => {
+  console.log(`Active orders: ${response.items.length}`)
+})
+```
+
+## Order Monitoring
+
+Track a specific order through its lifecycle:
+
+```typescript
+const orderHash = '0x...'
+const targetOrder = orderHash
+
+ws.order.onOrder((event) => {
+  // Filter for specific order
+  if ('orderHash' in event.data && event.data.orderHash === targetOrder) {
+    console.log(`Event for ${targetOrder}:`, event.event)
+    
+    switch (event.event) {
+      case 'order_created':
+        console.log('Order created and broadcasted')
+        break
+      case 'order_filled':
+        console.log('Order fully executed!')
+        ws.close() // Done monitoring
+        break
+      case 'order_filled_partially':
+        console.log('Partial fill completed')
+        break
+      case 'order_cancelled':
+        console.log('Order was cancelled')
+        ws.close()
+        break
+      case 'order_invalid':
+        console.log('Order became invalid')
+        ws.close()
+        break
+    }
+  }
+})
+```
+
+## Error Handling
+
+```typescript
+const ws = new WebSocketApi({
+  url: 'wss://api.1inch.com/fusion-plus/ws',
+  authKey: 'your-auth-key'
+})
+
+ws.onError((error) => {
+  console.error('WebSocket error:', error)
+  
+  // Implement reconnection logic
+  setTimeout(() => {
+    console.log('Attempting to reconnect...')
+    ws.init()
+  }, 5000)
+})
+
+ws.onClose(() => {
+  console.log('Connection closed')
+  
+  // Optional: reconnect automatically
+  setTimeout(() => {
+    console.log('Reconnecting...')
+    ws.init()
+  }, 3000)
+})
+```
+
+## Notes
+
+<Note>
+WebSocket connections are automatically established on instantiation unless `lazyInit: true` is set.
+</Note>
+
+<Info>
+Use WebSocket for real-time monitoring. For polling-based tracking, use the REST API methods like `getOrderStatus()`.
+</Info>
+
+<Warning>
+Implement proper error handling and reconnection logic for production applications.
+</Warning>
+
+## Related
+
+- [Order Events](/api/websocket/order-events) - Detailed event types
+- [RPC Methods](/api/websocket/rpc-methods) - Complete RPC reference
+- [Order Tracking](/guides/order-tracking) - Order monitoring guide

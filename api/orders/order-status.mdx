@@ -1,0 +1,402 @@
+---
+title: Order Status
+description: Check the status and details of a cross-chain order
+---
+
+## Overview
+
+The `getOrderStatus` method retrieves comprehensive information about an order's current state, including its lifecycle status, validation state, fill information, and auction details.
+
+## Method Signature
+
+```typescript
+async getOrderStatus(orderHash: string): Promise<OrderStatusResponse>
+```
+
+## Parameters
+
+<ParamField path="orderHash" type="string" required>
+  The unique identifier of the order. Hex string for EVM orders (e.g., `0x...`), base58 string for Solana orders
+</ParamField>
+
+## Returns
+
+<ResponseField name="OrderStatusResponse" type="object">
+  <ResponseField name="orderHash" type="string">
+    The order's unique identifier
+  </ResponseField>
+  
+  <ResponseField name="status" type="OrderStatus">
+    Current order status: `pending`, `executed`, `expired`, `cancelled`, `refunding`, or `refunded`
+  </ResponseField>
+  
+  <ResponseField name="validation" type="ValidationStatus">
+    Validation state: `valid`, `not-enough-balance`, `not-enough-allowance`, `invalid-signature`, etc.
+  </ResponseField>
+  
+  <ResponseField name="points" type="AuctionPoint[]">
+    Auction curve points defining the price over time
+  </ResponseField>
+  
+  <ResponseField name="approximateTakingAmount" type="string">
+    Estimated destination token amount at current auction price
+  </ResponseField>
+  
+  <ResponseField name="positiveSurplus" type="string">
+    Positive surplus earned by the maker
+  </ResponseField>
+  
+  <ResponseField name="fills" type="Fill[]">
+    Array of fill objects for this order
+    
+    <ResponseField name="status" type="FillStatus">
+      Fill status: `pending`, `executed`, `refunding`, or `refunded`
+    </ResponseField>
+    
+    <ResponseField name="txHash" type="string">
+      Transaction hash of the fill
+    </ResponseField>
+    
+    <ResponseField name="filledMakerAmount" type="string">
+      Amount filled on the source chain
+    </ResponseField>
+    
+    <ResponseField name="filledAuctionTakerAmount" type="string">
+      Amount filled on the destination chain
+    </ResponseField>
+    
+    <ResponseField name="escrowEvents" type="EscrowEventData[]">
+      Events related to the escrow
+      
+      <ResponseField name="transactionHash" type="string">
+        Transaction hash of the event
+      </ResponseField>
+      
+      <ResponseField name="escrow" type="string">
+        Escrow contract address
+      </ResponseField>
+      
+      <ResponseField name="side" type="EscrowEventSide">
+        Which chain: `src` or `dst`
+      </ResponseField>
+      
+      <ResponseField name="action" type="EscrowEventAction">
+        Event type: `src_escrow_created`, `dst_escrow_created`, `withdrawn`, `funds_rescued`, or `escrow_cancelled`
+      </ResponseField>
+      
+      <ResponseField name="blockTimestamp" type="number">
+        Unix timestamp in milliseconds
+      </ResponseField>
+    </ResponseField>
+  </ResponseField>
+  
+  <ResponseField name="auctionStartDate" type="number">
+    Unix timestamp in seconds when the auction started
+  </ResponseField>
+  
+  <ResponseField name="auctionDuration" type="number">
+    Auction duration in seconds
+  </ResponseField>
+  
+  <ResponseField name="initialRateBump" type="number">
+    Initial rate bump percentage for the auction
+  </ResponseField>
+  
+  <ResponseField name="createdAt" type="number">
+    Unix timestamp in milliseconds when the order was created
+  </ResponseField>
+  
+  <ResponseField name="srcTokenPriceUsd" type="string | null">
+    USD price of the source token
+  </ResponseField>
+  
+  <ResponseField name="dstTokenPriceUsd" type="string | null">
+    USD price of the destination token
+  </ResponseField>
+  
+  <ResponseField name="cancelTx" type="string | null">
+    Cancellation transaction hash if the order was cancelled
+  </ResponseField>
+  
+  <ResponseField name="dstChainId" type="SupportedChain">
+    Destination chain ID
+  </ResponseField>
+  
+  <ResponseField name="cancelable" type="boolean">
+    Whether the order can be cancelled
+  </ResponseField>
+  
+  <ResponseField name="takerAsset" type="string">
+    Destination token address
+  </ResponseField>
+  
+  <ResponseField name="timeLocks" type="string">
+    Hex encoded time lock parameters (with 0x prefix)
+  </ResponseField>
+  
+  <ResponseField name="srcChainId" type="SupportedChain">
+    Source chain ID (EVM or Solana)
+  </ResponseField>
+  
+  <ResponseField name="order" type="LimitOrderV4Struct | SolanaOrderJSON">
+    The order data structure (format depends on source chain)
+  </ResponseField>
+  
+  <ResponseField name="extension" type="string">
+    Extension data (EVM orders only)
+  </ResponseField>
+</ResponseField>
+
+## Order Lifecycle States
+
+### OrderStatus Enum
+
+```typescript
+enum OrderStatus {
+  Pending = 'pending',      // Order is active and awaiting fills
+  Executed = 'executed',    // Order has been successfully filled
+  Expired = 'expired',      // Order deadline has passed
+  Cancelled = 'cancelled',  // Order was cancelled by maker or resolver
+  Refunding = 'refunding',  // Refund process initiated
+  Refunded = 'refunded'     // Funds have been refunded
+}
+```
+
+### ValidationStatus Enum
+
+```typescript
+enum ValidationStatus {
+  Valid = 'valid',
+  OrderPredicateReturnedFalse = 'order-predicate-returned-false',
+  NotEnoughBalance = 'not-enough-balance',
+  NotEnoughAllowance = 'not-enough-allowance',
+  InvalidPermitSignature = 'invalid-permit-signature',
+  InvalidSignature = 'invalid-signature',
+  UnknownFailure = 'unknown-failure'
+  // ... additional validation states
+}
+```
+
+### FillStatus Enum
+
+```typescript
+enum FillStatus {
+  Pending = 'pending',      // Fill initiated but not completed
+  Executed = 'executed',    // Fill completed successfully
+  Refunding = 'refunding',  // Fill being refunded
+  Refunded = 'refunded'     // Fill has been refunded
+}
+```
+
+## Example Usage
+
+<Tabs>
+  <Tab title="Basic Status Check">
+    ```typescript
+    import { SDK } from '@1inch/cross-chain-sdk'
+
+    const sdk = new SDK({
+      url: 'https://api.1inch.dev/fusion-plus',
+      authKey: 'your-auth-key'
+    })
+
+    const orderHash = '0x1234...'
+    const status = await sdk.getOrderStatus(orderHash)
+
+    console.log('Order Status:', status.status)
+    console.log('Validation:', status.validation)
+    console.log('Fills:', status.fills.length)
+    ```
+  </Tab>
+  
+  <Tab title="Check Fill Details">
+    ```typescript
+    const status = await sdk.getOrderStatus(orderHash)
+
+    if (status.status === OrderStatus.Executed) {
+      status.fills.forEach((fill, index) => {
+        console.log(`Fill ${index + 1}:`)
+        console.log('  Status:', fill.status)
+        console.log('  Tx Hash:', fill.txHash)
+        console.log('  Maker Amount:', fill.filledMakerAmount)
+        console.log('  Taker Amount:', fill.filledAuctionTakerAmount)
+        
+        fill.escrowEvents.forEach(event => {
+          console.log(`  Event: ${event.action} on ${event.side} chain`)
+          console.log(`    Tx: ${event.transactionHash}`)
+        })
+      })
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Monitor Auction">
+    ```typescript
+    const status = await sdk.getOrderStatus(orderHash)
+
+    // Check auction timing
+    const now = Math.floor(Date.now() / 1000)
+    const auctionEnd = status.auctionStartDate + status.auctionDuration
+
+    if (now < status.auctionStartDate) {
+      console.log('Auction has not started yet')
+    } else if (now < auctionEnd) {
+      const elapsed = now - status.auctionStartDate
+      const progress = (elapsed / status.auctionDuration) * 100
+      console.log(`Auction ${progress.toFixed(1)}% complete`)
+      console.log('Current estimated amount:', status.approximateTakingAmount)
+    } else {
+      console.log('Auction has ended')
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Validation Check">
+    ```typescript
+    const status = await sdk.getOrderStatus(orderHash)
+
+    switch (status.validation) {
+      case ValidationStatus.Valid:
+        console.log('Order is valid and fillable')
+        break
+      case ValidationStatus.NotEnoughBalance:
+        console.log('Maker has insufficient balance')
+        break
+      case ValidationStatus.NotEnoughAllowance:
+        console.log('Maker has not approved tokens')
+        break
+      case ValidationStatus.InvalidSignature:
+        console.log('Order signature is invalid')
+        break
+      default:
+        console.log('Order validation failed:', status.validation)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Status Polling Pattern
+
+For monitoring order progress, implement polling with exponential backoff:
+
+```typescript
+async function pollOrderStatus(
+  sdk: SDK,
+  orderHash: string,
+  maxAttempts = 60,
+  initialDelay = 2000
+): Promise<OrderStatusResponse> {
+  let attempt = 0
+  let delay = initialDelay
+
+  while (attempt < maxAttempts) {
+    const status = await sdk.getOrderStatus(orderHash)
+
+    // Check if order reached a final state
+    if (
+      status.status === OrderStatus.Executed ||
+      status.status === OrderStatus.Cancelled ||
+      status.status === OrderStatus.Expired ||
+      status.status === OrderStatus.Refunded
+    ) {
+      return status
+    }
+
+    // Wait before next poll
+    await new Promise(resolve => setTimeout(resolve, delay))
+    
+    // Exponential backoff (cap at 30 seconds)
+    delay = Math.min(delay * 1.5, 30000)
+    attempt++
+  }
+
+  throw new Error('Order status polling timeout')
+}
+
+// Usage
+try {
+  const finalStatus = await pollOrderStatus(sdk, orderHash)
+  console.log('Order completed with status:', finalStatus.status)
+} catch (error) {
+  console.error('Polling failed:', error)
+}
+```
+
+## Advanced Polling with Event Filtering
+
+```typescript
+async function waitForEscrowEvent(
+  sdk: SDK,
+  orderHash: string,
+  targetAction: EscrowEventAction,
+  targetSide: EscrowEventSide
+): Promise<EscrowEventData> {
+  const pollInterval = 3000
+  const maxWait = 300000 // 5 minutes
+  const startTime = Date.now()
+
+  while (Date.now() - startTime < maxWait) {
+    const status = await sdk.getOrderStatus(orderHash)
+
+    for (const fill of status.fills) {
+      const event = fill.escrowEvents.find(
+        e => e.action === targetAction && e.side === targetSide
+      )
+      if (event) {
+        return event
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval))
+  }
+
+  throw new Error(`Event ${targetAction} on ${targetSide} not found`)
+}
+
+// Wait for source escrow creation
+const srcEscrowEvent = await waitForEscrowEvent(
+  sdk,
+  orderHash,
+  EscrowEventAction.SrcEscrowCreated,
+  EscrowEventSide.Src
+)
+
+console.log('Source escrow created:', srcEscrowEvent.transactionHash)
+```
+
+## Error Handling
+
+```typescript
+try {
+  const status = await sdk.getOrderStatus(orderHash)
+  
+  if (status.status === OrderStatus.Cancelled) {
+    console.log('Order was cancelled')
+    if (status.cancelTx) {
+      console.log('Cancel transaction:', status.cancelTx)
+    }
+  }
+} catch (error) {
+  if (error.response?.status === 404) {
+    console.error('Order not found')
+  } else {
+    console.error('Failed to get order status:', error)
+  }
+}
+```
+
+## Notes
+
+- Order hash format differs by chain: hex (EVM) vs base58 (Solana)
+- `approximateTakingAmount` changes during the auction based on the current time
+- Escrow events track the complete cross-chain flow
+- Multiple fills are possible for orders with `multipleFillsAllowed: true`
+- Polling frequency should be adjusted based on expected fill times
+- The `validation` field helps diagnose why orders aren't being filled
+- Price data (`srcTokenPriceUsd`, `dstTokenPriceUsd`) may be null for some tokens
+
+## Related Methods
+
+- [Submit Order](/api/orders/submit-order) - Submit orders before checking status
+- [Get Active Orders](/api/orders/get-active-orders) - List all active orders
+- [Get Orders By Maker](/api/orders/get-orders-by-maker) - Get all orders for an address

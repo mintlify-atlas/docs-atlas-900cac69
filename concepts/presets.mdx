@@ -1,0 +1,461 @@
+---
+title: "Presets"
+description: "Understanding execution presets for optimizing swap speed and cost"
+---
+
+## What are Presets?
+
+Presets are pre-configured swap execution strategies that balance speed, cost, and reliability for cross-chain transfers. Each preset defines parameters for the auction mechanism that determines when and how resolvers can fulfill your order.
+
+<Info>
+1inch Fusion+ uses a Dutch auction system where the exchange rate starts favorable to resolvers and gradually improves for users over time. Presets control this auction timeline.
+</Info>
+
+## Available Presets
+
+The SDK provides three standard presets, plus support for custom configurations:
+
+### Fast
+
+**Best for**: Time-sensitive swaps where speed is priority
+
+- **Execution Time**: Typically 2-5 minutes
+- **Cost**: Higher (less favorable initial rate)
+- **Fills**: Usually single fill
+- **Auction Duration**: Shorter window
+
+```typescript
+import { PresetEnum } from '@1inch/cross-chain-sdk'
+
+const quote = await sdk.getQuote({
+  amount: '10000000',
+  srcChainId: NetworkEnum.POLYGON,
+  dstChainId: NetworkEnum.BINANCE,
+  srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+  walletAddress
+})
+
+// Use fast preset
+const preset = PresetEnum.fast
+const presetData = quote.presets[preset]
+
+console.log('Auction duration:', presetData.auctionDuration, 'seconds')
+console.log('Start amount:', presetData.startAmount)
+console.log('Secrets needed:', presetData.secretsCount)
+```
+
+### Medium
+
+**Best for**: Balanced approach for most use cases
+
+- **Execution Time**: Typically 5-15 minutes
+- **Cost**: Moderate (balanced rate)
+- **Fills**: May support multiple fills
+- **Auction Duration**: Medium window
+
+```typescript
+const preset = PresetEnum.medium
+```
+
+### Slow
+
+**Best for**: Large swaps where getting best price is priority
+
+- **Execution Time**: Typically 15-30 minutes
+- **Cost**: Lower (more favorable rate over time)
+- **Fills**: Often supports multiple fills
+- **Auction Duration**: Longer window for competition
+
+```typescript
+const preset = PresetEnum.slow
+```
+
+<Note>
+**Recommended Preset**: The quote response includes a `recommendedPreset` field that suggests the optimal preset based on current market conditions and order size.
+</Note>
+
+### Custom
+
+**Best for**: Advanced users with specific requirements
+
+```typescript
+import { PresetEnum } from '@1inch/cross-chain-sdk'
+
+// Get quote with custom preset parameters
+const quote = await sdk.getQuote(
+  {
+    amount: '10000000',
+    srcChainId: NetworkEnum.POLYGON,
+    dstChainId: NetworkEnum.BINANCE,
+    srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+    dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    walletAddress
+  },
+  {
+    customPreset: {
+      auctionDuration: 900,           // 15 minutes
+      auctionStartAmount: '9500000',  // Starting rate
+      auctionEndAmount: '9800000',    // Ending rate
+      points: [                        // Rate curve points
+        { delay: 300, toTokenAmount: '9600000' },
+        { delay: 600, toTokenAmount: '9750000' }
+      ]
+    }
+  }
+)
+
+const preset = PresetEnum.custom
+```
+
+## Preset Configuration Details
+
+Each preset contains detailed configuration from the Quoter API:
+
+```typescript
+// From src/api/quoter/types.ts:145-162
+interface PresetData {
+  auctionDuration: number        // Total auction time in seconds
+  startAuctionIn: number         // Delay before auction starts
+  initialRateBump: number        // Initial rate advantage for resolvers
+  auctionStartAmount: string     // Destination amount at auction start
+  startAmount: string            // Includes gas cost estimate
+  auctionEndAmount: string       // Destination amount at auction end
+  costInDstToken: string         // Estimated cost in destination token
+  points: AuctionPoint[]         // Rate curve definition
+  allowPartialFills: boolean     // Can order be partially filled
+  allowMultipleFills: boolean    // Can order have multiple fills
+  gasCost: {                     // Gas estimation
+    gasBumpEstimate: number
+    gasPriceEstimate: string
+  }
+  exclusiveResolver: string | null  // Reserved resolver address
+  secretsCount: number           // Number of secrets required
+}
+```
+
+### Understanding Preset Fields
+
+<Accordion title="Auction Parameters">
+**auctionDuration**: How long the auction runs before reaching the end amount
+
+**startAuctionIn**: Delay before auction begins (allows time for order propagation)
+
+**initialRateBump**: Percentage advantage given to resolvers at auction start
+
+```typescript
+const preset = quote.presets.fast
+
+console.log(`Auction starts in ${preset.startAuctionIn}s`)
+console.log(`Auction runs for ${preset.auctionDuration}s`)
+console.log(`Initial rate bump: ${preset.initialRateBump}%`)
+```
+</Accordion>
+
+<Accordion title="Amount Fields">
+**auctionStartAmount**: Destination tokens at auction start (less favorable)
+
+**auctionEndAmount**: Destination tokens at auction end (more favorable)
+
+**startAmount**: Includes gas cost bump for resolver incentive
+
+**costInDstToken**: Total estimated cost in destination token terms
+
+```typescript
+const preset = quote.presets.medium
+
+console.log('Rate improvement over auction:')
+console.log('  Start:', preset.auctionStartAmount)
+console.log('  End:', preset.auctionEndAmount)
+
+const improvement = (
+  (BigInt(preset.auctionEndAmount) - BigInt(preset.auctionStartAmount)) * 100n
+) / BigInt(preset.auctionStartAmount)
+
+console.log('  Improvement:', improvement.toString() + '%')
+```
+</Accordion>
+
+<Accordion title="Fill Options">
+**allowPartialFills**: Whether order can be filled in parts
+
+**allowMultipleFills**: Whether multiple resolvers can fill
+
+**secretsCount**: Number of secrets needed (1 for single fill, multiple for multi-fill)
+
+```typescript
+const preset = quote.presets.slow
+
+if (preset.allowMultipleFills) {
+  console.log(`Order can be split into ${preset.secretsCount} fills`)
+  
+  // Generate appropriate number of secrets
+  const secrets = Array.from({ length: preset.secretsCount })
+    .map(() => '0x' + randomBytes(32).toString('hex'))
+} else {
+  console.log('Order must be filled atomically')
+}
+```
+</Accordion>
+
+<Accordion title="Auction Points">
+**points**: Define the rate curve between auction start and end
+
+```typescript
+interface AuctionPoint {
+  delay: number            // Seconds from auction start
+  toTokenAmount: string    // Destination token amount at this point
+}
+
+// Example: Visualize rate curve
+const preset = quote.presets.medium
+
+console.log('Rate curve:')
+console.log(`  0s: ${preset.auctionStartAmount}`)
+
+for (const point of preset.points) {
+  console.log(`  ${point.delay}s: ${point.toTokenAmount}`)
+}
+
+console.log(`  ${preset.auctionDuration}s: ${preset.auctionEndAmount}`)
+```
+</Accordion>
+
+## How to Choose the Right Preset
+
+Consider these factors when selecting a preset:
+
+### By Priority
+
+```typescript
+function selectPreset(
+  priority: 'speed' | 'cost' | 'balanced'
+): PresetEnum {
+  switch (priority) {
+    case 'speed':
+      return PresetEnum.fast
+    case 'cost':
+      return PresetEnum.slow
+    case 'balanced':
+      return PresetEnum.medium
+  }
+}
+```
+
+### By Order Size
+
+```typescript
+function selectPresetBySize(
+  amountUSD: number,
+  quote: Quote
+): PresetEnum {
+  if (amountUSD < 1000) {
+    // Small orders: prioritize speed
+    return PresetEnum.fast
+  } else if (amountUSD < 10000) {
+    // Medium orders: balanced approach
+    return PresetEnum.medium
+  } else {
+    // Large orders: prioritize best price
+    return PresetEnum.slow
+  }
+}
+```
+
+### Using Recommended Preset
+
+```typescript
+const quote = await sdk.getQuote({ /* params */ })
+
+// Use API's recommendation
+const preset = quote.recommendedPreset
+
+console.log(`Using recommended preset: ${preset}`)
+
+const presetConfig = quote.presets[preset]
+console.log('Expected execution:', presetConfig.auctionDuration, 'seconds')
+```
+
+<Warning>
+**Time Sensitivity**: Orders expire after the auction duration plus cancellation windows. If resolvers don't fill the order in time, it will be cancelled and funds returned.
+</Warning>
+
+## Preset Implementation in SDK
+
+The `Preset` class wraps the preset configuration:
+
+```typescript
+// From src/api/quoter/preset.ts:8-77
+import { PresetData } from './types'
+import { AuctionDetails, AuctionPoint } from '../../domains/auction-details'
+import { EvmAddress as Address } from '../../domains/addresses'
+
+export class Preset {
+    public readonly auctionDuration: bigint
+    public readonly startAuctionIn: bigint
+    public readonly initialRateBump: number
+    public readonly auctionStartAmount: bigint
+    public readonly startAmount: bigint
+    public readonly costInDstToken: bigint
+    public readonly auctionEndAmount: bigint
+    public readonly points: AuctionPoint[]
+    public readonly gasCostInfo: {
+        gasBumpEstimate: bigint
+        gasPriceEstimate: bigint
+    }
+    public readonly exclusiveResolver?: Address
+    public readonly allowPartialFills: boolean
+    public readonly allowMultipleFills: boolean
+    public readonly secretsCount: number
+
+    constructor(preset: PresetData) {
+        this.startAmount = BigInt(preset.startAmount)
+        this.secretsCount = preset.secretsCount
+        this.costInDstToken = BigInt(preset.costInDstToken)
+        this.auctionDuration = BigInt(preset.auctionDuration)
+        this.startAuctionIn = BigInt(preset.startAuctionIn)
+        this.initialRateBump = preset.initialRateBump
+        this.auctionStartAmount = BigInt(preset.auctionStartAmount)
+        this.auctionEndAmount = BigInt(preset.auctionEndAmount)
+        this.points = preset.points
+        this.gasCostInfo = {
+            gasPriceEstimate: BigInt(preset.gasCost?.gasPriceEstimate || 0n),
+            gasBumpEstimate: BigInt(preset.gasCost?.gasBumpEstimate || 0n)
+        }
+        this.exclusiveResolver = preset.exclusiveResolver
+            ? Address.fromString(preset.exclusiveResolver)
+            : undefined
+        this.allowPartialFills = preset.allowPartialFills
+        this.allowMultipleFills = preset.allowMultipleFills
+    }
+
+    createAuctionDetails(additionalWaitPeriod = 0n): AuctionDetails {
+        return new AuctionDetails({
+            duration: this.auctionDuration,
+            startTime: this.calcAuctionStartTime(additionalWaitPeriod),
+            initialRateBump: this.initialRateBump,
+            points: this.points,
+            gasCost: this.gasCostInfo
+        })
+    }
+}
+```
+
+## Complete Example
+
+Here's a complete example showing preset usage:
+
+```typescript
+import {
+  SDK,
+  PresetEnum,
+  HashLock,
+  NetworkEnum
+} from '@1inch/cross-chain-sdk'
+import { randomBytes } from 'crypto'
+
+const sdk = new SDK({ /* config */ })
+
+async function createSwapWithPreset() {
+  // 1. Get quote
+  const quote = await sdk.getQuote({
+    amount: '10000000',  // 10 USDT
+    srcChainId: NetworkEnum.POLYGON,
+    dstChainId: NetworkEnum.BINANCE,
+    srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+    dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    walletAddress
+  })
+
+  // 2. Compare presets
+  console.log('Available presets:')
+  
+  for (const presetName of ['fast', 'medium', 'slow'] as const) {
+    const preset = quote.presets[presetName]
+    console.log(`\n${presetName.toUpperCase()}:`)
+    console.log('  Duration:', preset.auctionDuration, 'seconds')
+    console.log('  Destination amount:', preset.auctionEndAmount)
+    console.log('  Secrets needed:', preset.secretsCount)
+    console.log('  Multiple fills:', preset.allowMultipleFills)
+  }
+
+  // 3. Use recommended preset
+  const preset = quote.recommendedPreset
+  console.log(`\nUsing recommended: ${preset}`)
+
+  const presetConfig = quote.presets[preset]
+
+  // 4. Generate appropriate number of secrets
+  const secrets = Array.from({
+    length: presetConfig.secretsCount
+  }).map(() => '0x' + randomBytes(32).toString('hex'))
+
+  // 5. Create hash lock based on secrets count
+  const hashLock = secrets.length === 1
+    ? HashLock.forSingleFill(secrets[0])
+    : HashLock.forMultipleFills(HashLock.getMerkleLeaves(secrets))
+
+  const secretHashes = secrets.map(s => HashLock.hashSecret(s))
+
+  // 6. Create order with selected preset
+  const { hash, quoteId, order } = await sdk.createOrder(quote, {
+    walletAddress,
+    hashLock,
+    preset,  // Use selected preset
+    secretHashes
+  })
+
+  console.log('\nOrder created:', hash)
+  console.log('Expected execution time:', presetConfig.auctionDuration, 'seconds')
+
+  return { hash, secrets, quote, preset }
+}
+```
+
+## Advanced: Custom Presets
+
+For fine-grained control, create custom presets:
+
+```typescript
+import { PresetEnum } from '@1inch/cross-chain-sdk'
+
+const quote = await sdk.getQuote(
+  {
+    amount: '100000000',  // 100 USDT
+    srcChainId: NetworkEnum.POLYGON,
+    dstChainId: NetworkEnum.BINANCE,
+    srcTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+    dstTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    walletAddress
+  },
+  {
+    customPreset: {
+      auctionDuration: 1200,          // 20 minutes
+      auctionStartAmount: '95000000', // Start at 95 BNB
+      auctionEndAmount: '98000000',   // End at 98 BNB
+      points: [
+        { delay: 300, toTokenAmount: '96000000' },   // 5 min: 96 BNB
+        { delay: 600, toTokenAmount: '97000000' },   // 10 min: 97 BNB
+        { delay: 900, toTokenAmount: '97500000' }    // 15 min: 97.5 BNB
+      ]
+    }
+  }
+)
+
+const customPreset = quote.presets.custom
+console.log('Custom preset:', customPreset)
+```
+
+<Note>
+Custom presets are useful for:
+- Specific timing requirements
+- Custom rate curves
+- Integration with external pricing strategies
+- Testing and development
+</Note>
+
+## Related Concepts
+
+- [Hash Locks](/concepts/hash-locks): How secrets count relates to fill configuration
+- [Secrets](/concepts/secrets): Generating the right number of secrets for your preset
+- [Atomic Swaps](/concepts/atomic-swaps): How auction mechanisms enable trustless execution

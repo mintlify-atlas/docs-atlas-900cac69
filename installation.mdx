@@ -1,0 +1,161 @@
+---
+title: 'Installation'
+description: 'Install and configure the 1inch Cross-Chain SDK'
+---
+
+## Package Installation
+
+Install the SDK using your preferred package manager:
+
+<CodeGroup>
+
+```bash npm
+npm install @1inch/cross-chain-sdk
+```
+
+```bash yarn
+yarn add @1inch/cross-chain-sdk
+```
+
+```bash pnpm
+pnpm add @1inch/cross-chain-sdk
+```
+
+</CodeGroup>
+
+## Peer Dependencies
+
+The SDK has one optional peer dependency:
+
+- **assert** (^2.0.0) - Optional, used for Node.js environments
+
+Most projects won't need to install this manually as it's typically included in Node.js environments.
+
+## Requirements
+
+- **Node.js**: Version 18.16.0 or higher
+- **TypeScript**: Version 5.x recommended (if using TypeScript)
+
+## Get Your API Key
+
+Before initializing the SDK, you'll need an authentication key from the 1inch Developer Portal:
+
+<Steps>
+  <Step title="Visit the Developer Portal">
+    Go to [https://portal.1inch.dev](https://portal.1inch.dev) and sign up for a free account
+  </Step>
+  
+  <Step title="Create an API Key">
+    Navigate to the API Keys section and generate a new key for your project
+  </Step>
+  
+  <Step title="Store Securely">
+    Save your API key in environment variables - never commit it to version control
+  </Step>
+</Steps>
+
+<Warning>
+  Keep your API key secure. Don't expose it in client-side code or commit it to public repositories.
+</Warning>
+
+## Basic SDK Initialization
+
+Here's how to initialize the SDK with Web3.js:
+
+```typescript
+import { SDK, PrivateKeyProviderConnector } from '@1inch/cross-chain-sdk'
+import Web3 from 'web3'
+
+const privateKey = process.env.PRIVATE_KEY // '0x...'
+const rpc = 'https://ethereum-rpc.publicnode.com'
+const authKey = process.env.AUTH_KEY // Get from 1inch Developer Portal
+
+const web3 = new Web3(rpc)
+const walletAddress = web3.eth.accounts.privateKeyToAccount(privateKey).address
+
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey,
+    blockchainProvider: new PrivateKeyProviderConnector(privateKey, web3)
+})
+```
+
+## Alternative: Ethers.js Initialization
+
+If you prefer using ethers.js, here's the setup:
+
+```typescript
+import { SDK, PrivateKeyProviderConnector } from '@1inch/cross-chain-sdk'
+import { JsonRpcProvider } from 'ethers'
+
+const privateKey = process.env.PRIVATE_KEY
+const nodeUrl = 'https://ethereum-rpc.publicnode.com'
+const authKey = process.env.AUTH_KEY
+
+const ethersRpcProvider = new JsonRpcProvider(nodeUrl)
+
+// Create a Web3-compatible provider wrapper
+const ethersProviderConnector = {
+    eth: {
+        call(transactionConfig) {
+            return ethersRpcProvider.call(transactionConfig)
+        }
+    },
+    extend() {}
+}
+
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey,
+    blockchainProvider: new PrivateKeyProviderConnector(
+        privateKey,
+        ethersProviderConnector
+    )
+})
+```
+
+## Read-Only SDK (No Blockchain Provider)
+
+If you only need to query quotes and don't need to create orders, you can initialize without a blockchain provider:
+
+```typescript
+import { SDK } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({
+    url: 'https://api.1inch.com/fusion-plus',
+    authKey: process.env.AUTH_KEY
+    // No blockchainProvider needed for read-only operations
+})
+
+// You can now get quotes
+const quote = await sdk.getQuote({
+    srcChainId: 1,
+    dstChainId: 56,
+    srcTokenAddress: '0x...',
+    dstTokenAddress: '0x...',
+    amount: '1000000',
+    walletAddress: '0x...'
+})
+```
+
+<Info>
+  The blockchain provider is only required when creating and submitting orders. Quote queries work without it.
+</Info>
+
+## Configuration Options
+
+The SDK constructor accepts the following options:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes | 1inch Fusion+ API endpoint |
+| `authKey` | string | Yes | Your API key from the Developer Portal |
+| `blockchainProvider` | ProviderConnector | No | Provider for signing transactions (required for order creation) |
+
+## Next Steps
+
+Now that you have the SDK installed and configured, you're ready to execute your first cross-chain swap:
+
+<Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+  Follow our step-by-step guide to execute your first cross-chain swap
+</Card>

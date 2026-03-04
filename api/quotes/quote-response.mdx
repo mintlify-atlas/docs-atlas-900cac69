@@ -1,0 +1,288 @@
+---
+title: Quote Response
+description: Structure and properties of quote responses
+---
+
+## Overview
+
+The `Quote` object contains all pricing, routing, and execution details for a cross-chain swap.
+
+## Type Definition
+
+```typescript
+class Quote {
+  srcChainId: NetworkEnum
+  dstChainId: NetworkEnum
+  srcTokenAmount: string
+  dstTokenAmount: string
+  dstMinTokenAmount: string
+  presets: Presets
+  recommendedPreset: PresetEnum
+  quoteId?: string
+  integratorFee?: IntegratorFeeResponse
+  resolverFee?: ResolverFeeParams
+  
+  // Methods
+  createEvmOrder(params: EvmCrossChainOrderParamsData): EvmCrossChainOrder
+  createSolanaOrder(params: SvmCrossChainOrderParamsData): SvmCrossChainOrder
+  getPreset(preset: PresetEnum): Preset
+  isEvmQuote(): boolean
+  isSolanaQuote(): boolean
+}
+```
+
+## Fields
+
+<ResponseField name="srcChainId" type="NetworkEnum">
+  Source chain ID where the swap originates
+</ResponseField>
+
+<ResponseField name="dstChainId" type="NetworkEnum">
+  Destination chain ID where tokens will be received
+</ResponseField>
+
+<ResponseField name="srcTokenAmount" type="string">
+  Exact amount of source tokens to be swapped (in smallest unit)
+</ResponseField>
+
+<ResponseField name="dstTokenAmount" type="string">
+  Expected amount of destination tokens to be received (in smallest unit)
+  
+  This is the **expected** output. Actual output may vary due to slippage.
+</ResponseField>
+
+<ResponseField name="dstMinTokenAmount" type="string">
+  Minimum guaranteed amount of destination tokens
+  
+  The swap will revert if output is less than this amount. This protects against excessive slippage.
+</ResponseField>
+
+<ResponseField name="presets" type="Presets">
+  Available execution presets with their parameters
+  
+  <Expandable title="Presets structure">
+    <ResponseField name="fast" type="Preset">
+      Fast execution preset (higher cost, faster execution)
+    </ResponseField>
+    
+    <ResponseField name="medium" type="Preset">
+      Medium execution preset (balanced cost and speed)
+    </ResponseField>
+    
+    <ResponseField name="slow" type="Preset">
+      Slow execution preset (lower cost, slower execution)
+    </ResponseField>
+    
+    <ResponseField name="custom" type="Preset">
+      Custom preset (only if requested via `getQuoteWithCustomPreset`)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="recommendedPreset" type="PresetEnum">
+  Recommended preset based on market conditions
+  
+  Values: `PresetEnum.fast`, `PresetEnum.medium`, or `PresetEnum.slow`
+</ResponseField>
+
+<ResponseField name="quoteId" type="string">
+  Unique quote identifier for order submission
+  
+  <Info>Only present when `enableEstimate: true` in quote request</Info>
+</ResponseField>
+
+<ResponseField name="integratorFee" type="IntegratorFeeResponse">
+  Integrator fee details (if configured)
+  
+  <Expandable title="IntegratorFeeResponse structure">
+    <ResponseField name="receiver" type="EvmAddress">
+      Address receiving the integrator fee
+    </ResponseField>
+    
+    <ResponseField name="value" type="Bps">
+      Total fee in basis points
+    </ResponseField>
+    
+    <ResponseField name="share" type="Bps">
+      Integrator's share of the fee (remainder goes to protocol)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="resolverFee" type="ResolverFeeParams">
+  Resolver fee configuration
+  
+  <Expandable title="ResolverFeeParams structure">
+    <ResponseField name="receiver" type="EvmAddress">
+      Resolver fee recipient address
+    </ResponseField>
+    
+    <ResponseField name="bps" type="Bps">
+      Fee in basis points
+    </ResponseField>
+    
+    <ResponseField name="whitelistDiscount" type="Bps">
+      Discount for whitelisted users
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Methods
+
+### createEvmOrder
+
+Creates an EVM cross-chain order from the quote.
+
+```typescript
+createEvmOrder(params: EvmCrossChainOrderParamsData): EvmCrossChainOrder
+```
+
+**Parameters:**
+- `hashLock` - Hash lock for the swap
+- `preset` - Execution preset to use
+- `receiver` - Optional destination address (defaults to maker)
+- `nonce` - Optional order nonce
+- `permit` - Optional EIP-2612 permit
+
+### createSolanaOrder
+
+Creates a Solana cross-chain order from the quote.
+
+```typescript
+createSolanaOrder(params: SvmCrossChainOrderParamsData): SvmCrossChainOrder
+```
+
+**Parameters:**
+- `hashLock` - Hash lock for the swap
+- `receiver` - Destination EVM address (required)
+- `preset` - Execution preset to use
+
+### getPreset
+
+Retrieves a specific preset's configuration.
+
+```typescript
+getPreset(preset: PresetEnum): Preset
+```
+
+### isEvmQuote / isSolanaQuote
+
+Type guards to check quote type.
+
+```typescript
+isEvmQuote(): boolean
+isSolanaQuote(): boolean
+```
+
+## Examples
+
+### Accessing Quote Data
+
+```typescript
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.POLYGON,
+  srcTokenAddress: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+  dstTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  amount: '1000000',
+  walletAddress: '0x...',
+  enableEstimate: true
+})
+
+console.log(`Source: ${quote.srcTokenAmount} tokens`)
+console.log(`Expected output: ${quote.dstTokenAmount} tokens`)
+console.log(`Minimum output: ${quote.dstMinTokenAmount} tokens`)
+console.log(`Recommended preset: ${quote.recommendedPreset}`)
+console.log(`Quote ID: ${quote.quoteId}`)
+```
+
+### Exploring Presets
+
+```typescript
+const fastPreset = quote.getPreset(PresetEnum.fast)
+const slowPreset = quote.getPreset(PresetEnum.slow)
+
+console.log(`Fast preset fills: ${fastPreset.secretsCount}`)
+console.log(`Slow preset fills: ${slowPreset.secretsCount}`)
+```
+
+### Creating Orders from Quote
+
+```typescript
+import { HashLock } from '@1inch/cross-chain-sdk'
+import { randomBytes } from 'crypto'
+
+// Generate secrets
+const preset = quote.getPreset(quote.recommendedPreset)
+const secrets = Array.from({ length: preset.secretsCount })
+  .map(() => '0x' + randomBytes(32).toString('hex'))
+
+const hashLock = secrets.length === 1
+  ? HashLock.forSingleFill(secrets[0])
+  : HashLock.forMultipleFills(HashLock.getMerkleLeaves(secrets))
+
+// Create EVM order
+if (quote.isEvmQuote()) {
+  const order = quote.createEvmOrder({
+    hashLock,
+    preset: quote.recommendedPreset
+  })
+}
+
+// Create Solana order
+if (quote.isSolanaQuote()) {
+  const order = quote.createSolanaOrder({
+    hashLock,
+    receiver: EvmAddress.fromString('0x...'),
+    preset: quote.recommendedPreset
+  })
+}
+```
+
+### Checking Fee Information
+
+```typescript
+if (quote.integratorFee) {
+  console.log(`Integrator fee: ${quote.integratorFee.value.toString()} bps`)
+  console.log(`Integrator share: ${quote.integratorFee.share.toString()} bps`)
+  console.log(`Fee receiver: ${quote.integratorFee.receiver.toString()}`)
+}
+
+if (quote.resolverFee) {
+  console.log(`Resolver fee: ${quote.resolverFee.bps.toString()} bps`)
+  console.log(`Whitelist discount: ${quote.resolverFee.whitelistDiscount.toString()} bps`)
+}
+```
+
+## Preset Object
+
+```typescript
+interface Preset {
+  secretsCount: number // Number of fills required
+  auctionDuration: bigint // Auction duration in seconds
+  auctionStartAmount: bigint // Starting amount for auction
+  auctionEndAmount: bigint // Ending amount for auction
+  points: Array<{ delay: bigint; coefficient: bigint }> // Auction curve points
+}
+```
+
+## Notes
+
+<Note>
+  The `quoteId` is essential for order submission. Always use `enableEstimate: true` when you plan to create an order.
+</Note>
+
+<Warning>
+  Quotes expire after a short time (typically 2-5 minutes). Create and submit orders promptly after receiving a quote.
+</Warning>
+
+<Info>
+  The difference between `dstTokenAmount` and `dstMinTokenAmount` represents the maximum acceptable slippage.
+</Info>
+
+## Related
+
+- [getQuote](/api/quotes/get-quote) - Request a quote
+- [QuoteParams](/api/quotes/quote-params) - Quote request parameters
+- [createOrder](/api/orders/create-order) - Create an order from a quote
+- [Presets](/concepts/presets) - Understanding execution presets

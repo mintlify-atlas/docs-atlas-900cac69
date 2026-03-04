@@ -1,0 +1,186 @@
+---
+title: Create Order
+description: Create a cross-chain order from a quote
+---
+
+## Overview
+
+The `createOrder` method prepares a cross-chain order from a quote. It returns a `PreparedOrder` object containing the order instance, order hash, and quote ID. The order must be created with `enableEstimate=true` in the quote.
+
+## Method Signature
+
+```typescript
+creatOrder(quote: Quote, params: OrderParams): PreparedOrder
+```
+
+## Parameters
+
+<ParamField path="quote" type="Quote" required>
+  The quote object obtained from `getQuote()`. Must have `enableEstimate=true` and contain a `quoteId`.
+</ParamField>
+
+<ParamField path="params" type="OrderParams" required>
+  Order creation parameters
+  
+  <ParamField path="walletAddress" type="string" required>
+    The maker's wallet address
+  </ParamField>
+  
+  <ParamField path="hashLock" type="HashLock" required>
+    Hash lock for the escrow mechanism
+  </ParamField>
+  
+  <ParamField path="secretHashes" type="string[]" required>
+    Array of secret hashes for order fulfillment. Single hash for single-fill orders, multiple hashes for multi-fill orders
+  </ParamField>
+  
+  <ParamField path="receiver" type="string">
+    Destination chain receiver address. Defaults to `walletAddress` (maker address) if not provided. Required for Solana orders
+  </ParamField>
+  
+  <ParamField path="preset" type="PresetEnum">
+    Custom preset for order parameters. Uses recommended preset by default
+  </ParamField>
+  
+  <ParamField path="nonce" type="bigint">
+    Unique nonce for the wallet address. Can be serial or randomly generated
+  </ParamField>
+  
+  <ParamField path="permit" type="string">
+    Permit signature (without the first 20 bytes of token address)
+  </ParamField>
+  
+  <ParamField path="source" type="string">
+    Source identifier for tracking
+  </ParamField>
+  
+  <ParamField path="isPermit2" type="boolean">
+    Whether to use Permit2 for approvals
+  </ParamField>
+  
+  <ParamField path="customPreset" type="CustomPreset">
+    Custom preset configuration
+  </ParamField>
+</ParamField>
+
+## Returns
+
+<ResponseField name="PreparedOrder" type="object">
+  <ResponseField name="order" type="EvmCrossChainOrder | SvmCrossChainOrder">
+    The created order instance (EVM or Solana)
+  </ResponseField>
+  
+  <ResponseField name="hash" type="string">
+    The order hash (hex string for EVM, base58 for Solana)
+  </ResponseField>
+  
+  <ResponseField name="quoteId" type="string">
+    The quote ID from the original quote
+  </ResponseField>
+</ResponseField>
+
+## Example Usage
+
+<Tabs>
+  <Tab title="EVM Order">
+    ```typescript
+    import { SDK, HashLock } from '@1inch/cross-chain-sdk'
+
+    const sdk = new SDK({
+      url: 'https://api.1inch.dev/fusion-plus',
+      authKey: 'your-auth-key'
+    })
+
+    // Get quote with enableEstimate
+    const quote = await sdk.getQuote({
+      srcChainId: 1,
+      dstChainId: 137,
+      srcTokenAddress: '0x...',
+      dstTokenAddress: '0x...',
+      amount: '1000000000000000000',
+      walletAddress: '0xYourAddress',
+      enableEstimate: true
+    })
+
+    // Create hash lock and secrets
+    const secrets = HashLock.generateSecrets()
+    const hashLock = HashLock.forMultipleFills(secrets)
+
+    // Create order
+    const preparedOrder = sdk.createOrder(quote, {
+      walletAddress: '0xYourAddress',
+      hashLock,
+      secretHashes: secrets.map(s => s.hash),
+      receiver: '0xReceiverAddress'
+    })
+
+    console.log('Order Hash:', preparedOrder.hash)
+    console.log('Quote ID:', preparedOrder.quoteId)
+    ```
+  </Tab>
+  
+  <Tab title="Solana Order">
+    ```typescript
+    import { SDK, HashLock } from '@1inch/cross-chain-sdk'
+
+    const sdk = new SDK({
+      url: 'https://api.1inch.dev/fusion-plus',
+      authKey: 'your-auth-key'
+    })
+
+    // Get quote for Solana
+    const quote = await sdk.getQuote({
+      srcChainId: NetworkEnum.SOLANA,
+      dstChainId: 1,
+      srcTokenAddress: 'SolTokenAddress...',
+      dstTokenAddress: '0x...',
+      amount: '1000000000',
+      walletAddress: 'SolanaWalletAddress...',
+      enableEstimate: true
+    })
+
+    // Create hash lock and secrets
+    const secrets = HashLock.generateSecrets()
+    const hashLock = HashLock.forMultipleFills(secrets)
+
+    // Create Solana order (receiver is required)
+    const preparedOrder = sdk.createOrder(quote, {
+      walletAddress: 'SolanaWalletAddress...',
+      hashLock,
+      secretHashes: secrets.map(s => s.hash),
+      receiver: '0xEvmReceiverAddress' // Required for Solana orders
+    })
+
+    console.log('Order Hash (base58):', preparedOrder.hash)
+    ```
+  </Tab>
+</Tabs>
+
+## Error Handling
+
+```typescript
+try {
+  const preparedOrder = sdk.createOrder(quote, params)
+} catch (error) {
+  if (error.message.includes('request quote with enableEstimate=true')) {
+    // Quote was not created with enableEstimate flag
+    console.error('Quote must have enableEstimate=true')
+  }
+}
+```
+
+## Notes
+
+- The quote must be obtained with `enableEstimate: true` to contain a valid `quoteId`
+- For Solana orders, the `receiver` parameter is required
+- The order is not yet submitted to the relayer at this point - use `submitOrder` or `announceOrder` to submit
+- The returned order hash is in hex format for EVM chains and base58 format for Solana
+- Secret hashes must match the hash lock configuration:
+  - Single-fill orders: 1 secret hash
+  - Multi-fill orders: Number of secrets must equal `hashLock.getPartsCount() + 1`
+
+## Related Methods
+
+- [Submit Order](/api/orders/submit-order) - Submit the created order to the relayer
+- [Get Quote](/api/quotes/get-quote) - Get a quote before creating an order
+- [Order Status](/api/orders/order-status) - Check the status of a submitted order

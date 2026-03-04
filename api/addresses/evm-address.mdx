@@ -1,0 +1,300 @@
+---
+title: EvmAddress
+description: EVM address wrapper class for cross-chain operations
+---
+
+## Overview
+
+The `EvmAddress` class provides a type-safe wrapper for Ethereum and EVM-compatible chain addresses, with utilities for conversion and validation.
+
+## Class Definition
+
+```typescript
+class EvmAddress {
+  static readonly ZERO: EvmAddress
+  static readonly NATIVE: EvmAddress
+  
+  constructor(inner: Address)
+  
+  static fromBigInt(val: bigint): EvmAddress
+  static fromString(address: string): EvmAddress
+  static fromBuffer(address: Buffer): EvmAddress
+  static fromUnknown(address: unknown): EvmAddress
+  
+  toString(): string
+  toBuffer(): Buffer
+  toBigint(): bigint
+  isZero(): boolean
+  isNative(): boolean
+  nativeAsZero(): EvmAddress
+  zeroAsNative(): EvmAddress
+  eq(other: EvmAddress): boolean
+}
+```
+
+## Constants
+
+### ZERO
+
+Zero address (`0x0000000000000000000000000000000000000000`)
+
+```typescript
+const zeroAddress = EvmAddress.ZERO
+console.log(zeroAddress.toString()) // 0x0000000000000000000000000000000000000000
+```
+
+### NATIVE
+
+Native token address (`0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee`)
+
+```typescript
+const nativeToken = EvmAddress.NATIVE
+console.log(nativeToken.toString()) // 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+```
+
+<Info>
+Use `EvmAddress.NATIVE` for native tokens (ETH, BNB, AVAX, MATIC, etc.) in quote requests.
+</Info>
+
+## Static Methods
+
+### fromString
+
+Creates an `EvmAddress` from a hex string.
+
+```typescript
+static fromString(address: string): EvmAddress
+```
+
+**Example:**
+```typescript
+const address = EvmAddress.fromString('0x742d35Cc6634C0532925a3b844Bc454e4438f44e')
+```
+
+### fromBigInt
+
+Creates an `EvmAddress` from a bigint.
+
+```typescript
+static fromBigInt(val: bigint): EvmAddress
+```
+
+**Example:**
+```typescript
+const address = EvmAddress.fromBigInt(12345678901234567890n)
+```
+
+### fromBuffer
+
+Creates an `EvmAddress` from a Buffer.
+
+```typescript
+static fromBuffer(address: Buffer): EvmAddress
+```
+
+**Example:**
+```typescript
+const buffer = Buffer.from('742d35Cc6634C0532925a3b844Bc454e4438f44e', 'hex')
+const address = EvmAddress.fromBuffer(buffer)
+```
+
+### fromUnknown
+
+Creates an `EvmAddress` from various input types with automatic detection.
+
+```typescript
+static fromUnknown(address: unknown): EvmAddress
+```
+
+Supports:
+- Hex strings (checksummed or not)
+- BigInt strings
+- BigInt values
+
+**Example:**
+```typescript
+const addr1 = EvmAddress.fromUnknown('0x742d35Cc6634C0532925a3b844Bc454e4438f44e')
+const addr2 = EvmAddress.fromUnknown(12345678901234567890n)
+const addr3 = EvmAddress.fromUnknown('12345678901234567890')
+```
+
+## Instance Methods
+
+### toString
+
+Returns the checksummed hex address string.
+
+```typescript
+toString(): string
+```
+
+**Example:**
+```typescript
+const address = EvmAddress.fromString('0x742d35cc6634c0532925a3b844bc454e4438f44e')
+console.log(address.toString()) // 0x742d35Cc6634C0532925a3b844Bc454e4438f44e (checksummed)
+```
+
+### toBigint
+
+Converts the address to a bigint.
+
+```typescript
+toBigint(): bigint
+```
+
+**Example:**
+```typescript
+const address = EvmAddress.fromString('0x742d35Cc6634C0532925a3b844Bc454e4438f44e')
+console.log(address.toBigint()) // 665833653117754451861185822157662744268587342926n
+```
+
+### toBuffer
+
+Converts the address to a Buffer.
+
+```typescript
+toBuffer(): Buffer
+```
+
+### isZero
+
+Checks if the address is the zero address.
+
+```typescript
+isZero(): boolean
+```
+
+**Example:**
+```typescript
+const zero = EvmAddress.ZERO
+console.log(zero.isZero()) // true
+
+const normal = EvmAddress.fromString('0x742d35Cc6634C0532925a3b844Bc454e4438f44e')
+console.log(normal.isZero()) // false
+```
+
+### isNative
+
+Checks if the address represents a native token.
+
+```typescript
+isNative(): boolean
+```
+
+**Example:**
+```typescript
+const native = EvmAddress.NATIVE
+console.log(native.isNative()) // true
+
+const usdt = EvmAddress.fromString('0xdac17f958d2ee523a2206206994597c13d831ec7')
+console.log(usdt.isNative()) // false
+```
+
+### nativeAsZero
+
+Converts native address to zero address (for contract interactions).
+
+```typescript
+nativeAsZero(): EvmAddress
+```
+
+**Example:**
+```typescript
+const native = EvmAddress.NATIVE
+const zero = native.nativeAsZero()
+console.log(zero.isZero()) // true
+
+const token = EvmAddress.fromString('0xdac17f958d2ee523a2206206994597c13d831ec7')
+console.log(token.nativeAsZero().toString()) // Same as token (unchanged)
+```
+
+<Note>
+Contracts often represent native tokens as the zero address. Use this method when interacting with contracts.
+</Note>
+
+### zeroAsNative
+
+Converts zero address to native address representation.
+
+```typescript
+zeroAsNative(): EvmAddress
+```
+
+**Example:**
+```typescript
+const zero = EvmAddress.ZERO
+const native = zero.zeroAsNative()
+console.log(native.isNative()) // true
+```
+
+### eq
+
+Compares two addresses for equality.
+
+```typescript
+eq(other: EvmAddress): boolean
+```
+
+**Example:**
+```typescript
+const addr1 = EvmAddress.fromString('0x742d35Cc6634C0532925a3b844Bc454e4438f44e')
+const addr2 = EvmAddress.fromString('0x742d35cc6634c0532925a3b844bc454e4438f44e')
+console.log(addr1.eq(addr2)) // true (case-insensitive)
+```
+
+## Usage Examples
+
+### In Quote Requests
+
+```typescript
+import { SDK, EvmAddress, NetworkEnum } from '@1inch/cross-chain-sdk'
+
+const sdk = new SDK({ /* config */ })
+
+// Native token swap (ETH → USDT)
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.POLYGON,
+  srcTokenAddress: EvmAddress.NATIVE.toString(),
+  dstTokenAddress: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  amount: '1000000000000000000', // 1 ETH
+  walletAddress: '0x...',
+  enableEstimate: true
+})
+```
+
+### With Integrator Fees
+
+```typescript
+import { Bps } from '@1inch/cross-chain-sdk'
+
+const quote = await sdk.getQuote({
+  srcChainId: NetworkEnum.ETHEREUM,
+  dstChainId: NetworkEnum.ARBITRUM,
+  srcTokenAddress: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  dstTokenAddress: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+  amount: '1000000',
+  walletAddress: '0x...',
+  enableEstimate: true,
+  integratorFee: {
+    receiver: EvmAddress.fromString('0xYourFeeReceiverAddress'),
+    value: new Bps(100n) // 1%
+  }
+})
+```
+
+### Creating Orders
+
+```typescript
+const order = quote.createEvmOrder({
+  hashLock,
+  preset: PresetEnum.fast,
+  receiver: EvmAddress.fromString('0xReceiverAddress')
+})
+```
+
+## Related
+
+- [SolanaAddress](/api/addresses/solana-address) - Solana address wrapper
+- [Quote Params](/api/quotes/quote-params) - Using addresses in quotes
+- [IntegratorFee](/guides/integrator-fees) - Fee receiver addresses
